@@ -1,0 +1,134 @@
+atividade append 
+
+## 🧪 **Exercício Prático: Listar Ordens de Vendas com Produtos e Montar Saída com APPEND**
+
+### 🎯 **Objetivo**
+
+Criar um programa que:
+
+1. Receba um **tipo de documento de venda** (VBAK-AUART) como filtro.
+2. Busque as **ordens de venda (VBAK)** e seus **itens (VBAP)** relacionados.
+3. Monte uma **tabela interna de saída** com os seguintes dados:
+
+   * Número do pedido
+   * Tipo de documento
+   * Código do material
+   * Quantidade
+   * Unidade de medida
+4. Use `APPEND` para preencher a tabela de saída e exiba os dados com `WRITE`.
+
+---
+
+### 🖥️ **Tela de Seleção**
+
+| Campo                            | Tipo           | Obrigatório |
+| -------------------------------- | -------------- | ----------- |
+| Tipo doc. de vendas (VBAK-AUART) | SELECT-OPTIONS | ✅           |
+
+---
+
+### 📊 **Tabelas Usadas**
+
+* `VBAK` – Cabeçalho da venda (`VBELN`, `AUART`)
+* `VBAP` – Itens da venda (`VBELN`, `MATNR`, `KWMENG`, `VRKME`)
+
+---
+
+## ✅ **Código ABAP com uso de `APPEND` (com explicações)**
+
+```abap
+REPORT ZRXX_EXERCICIO_APPEND.
+
+*----------------------------
+* Tela de Seleção
+*----------------------------
+SELECT-OPTIONS: s_auart FOR vbak-auart.
+
+*----------------------------
+* Tipos e Tabelas Internas
+*----------------------------
+TYPES: BEGIN OF ty_saida,
+         vbeln  TYPE vbak-vbeln,
+         auart  TYPE vbak-auart,
+         matnr  TYPE vbap-matnr,
+         kwmeng TYPE vbap-kwmeng,
+         vrkme  TYPE vbap-vrkme,
+       END OF ty_saida.
+
+DATA: it_vbak  TYPE TABLE OF vbak,
+      wa_vbak  TYPE vbak.
+
+DATA: it_vbap  TYPE TABLE OF vbap,
+      wa_vbap  TYPE vbap.
+
+DATA: it_saida TYPE TABLE OF ty_saida,
+      wa_saida TYPE ty_saida.
+
+*----------------------------
+* Início do Programa
+*----------------------------
+START-OF-SELECTION.
+
+* Seleciona os documentos de venda
+  SELECT vbeln auart
+    INTO TABLE it_vbak
+    FROM vbak
+    WHERE auart IN s_auart.
+
+  IF it_vbak IS INITIAL.
+    WRITE: / 'Nenhuma ordem de venda encontrada para o tipo informado.'.
+    EXIT.
+  ENDIF.
+
+* Seleciona os itens correspondentes
+  SELECT vbeln matnr kwmeng vrkme
+    INTO TABLE it_vbap
+    FROM vbap
+    FOR ALL ENTRIES IN it_vbak
+    WHERE vbeln = it_vbak-vbeln.
+
+* Monta a tabela de saída com dados combinados
+  LOOP AT it_vbap INTO wa_vbap.
+
+    READ TABLE it_vbak INTO wa_vbak WITH KEY vbeln = wa_vbap-vbeln.
+    IF sy-subrc <> 0.
+      CONTINUE.
+    ENDIF.
+
+    wa_saida-vbeln  = wa_vbak-vbeln.
+    wa_saida-auart  = wa_vbak-auart.
+    wa_saida-matnr  = wa_vbap-matnr.
+    wa_saida-kwmeng = wa_vbap-kwmeng.
+    wa_saida-vrkme  = wa_vbap-vrkme.
+
+    APPEND wa_saida TO it_saida.
+
+  ENDLOOP.
+
+* Exibe os dados da tabela de saída
+  LOOP AT it_saida INTO wa_saida.
+
+    WRITE: / 'Pedido:', wa_saida-vbeln,
+             'Tipo:', wa_saida-auart,
+             'Material:', wa_saida-matnr,
+             'Qtde:', wa_saida-kwmeng,
+             'Unidade:', wa_saida-vrkme.
+
+  ENDLOOP.
+```
+
+---
+
+## 🧠 O que você está praticando aqui:
+
+| Conceito                     | Aplicado onde                        |
+| ---------------------------- | ------------------------------------ |
+| `SELECT-OPTIONS`             | Para filtrar tipo de venda           |
+| `SELECT INTO TABLE`          | VBAK e VBAP                          |
+| `FOR ALL ENTRIES`            | Para relacionar VBAK com VBAP        |
+| `TYPES`, `DATA`, `WORK AREA` | Declarações de estrutura e variáveis |
+| `LOOP`, `READ TABLE`         | Para montar a saída                  |
+| `APPEND`                     | Para preencher a tabela de saída     |
+| `WRITE`                      | Para exibir cada linha da saída      |
+
+---
