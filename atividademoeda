@@ -1,0 +1,93 @@
+Processamento:
+Usando as moedas de origem e destino informados na tela de seleção, o programa deverá
+acessar a tabela TCURR(UP to N ROWS) – selecionar os campos: FCURR, TCURR, GDATU e
+UKURS, onde TCURR-FCURR = Moeda Origem e TCURR-TCURR = Moeda Destino.
+Uma vez obtido o registro desejado na seleção da tabela TCURR, devemos converter o
+conteúdo do campo TCURR-GDATU, usando a seguinte instrução:
+CONVERT INVERTED-DATE TCURR-GDATU INTO DATE V_DATA.
+A variável V_DATA precisa ser declarada usando o tipo SYDATUM.
+O próximo passo é calcular a diferença de dias entre V_DATA e a data atual do sistema, se a
+data for inferior à 30 dias usar o campo TCURR-UKURS para realizar a conversão de moeda. Se
+a data for superior à 30 dias, usaremos a taxa inserida na tela de seleção.
+
+
+
+REPORT ZRXX_ATIVIDADE9.
+
+*--------------------------------------------------*
+* Tela de Seleção
+*--------------------------------------------------*
+PARAMETERS: p_fcurr TYPE tcurr-fcurr OBLIGATORY,   " Moeda origem
+            p_tcurr TYPE tcurr-tcurr OBLIGATORY,   " Moeda destino
+            p_dmbtr TYPE dmbtr        OBLIGATORY,   " Valor a converter
+            p_ukurs TYPE ukurs.                    " Taxa manual (opcional)
+
+*--------------------------------------------------*
+* Estrutura e Tabela Interna
+*--------------------------------------------------*
+TYPES: BEGIN OF ty_tcurr,
+         fcurr TYPE tcurr-fcurr,
+         tcurr TYPE tcurr-tcurr,
+         gdatu TYPE tcurr-gdatu,
+         ukurs TYPE tcurr-ukurs,
+       END OF ty_tcurr.
+
+DATA: it_tcurr TYPE TABLE OF ty_tcurr,
+      wa_tcurr TYPE ty_tcurr.
+
+DATA: v_data   TYPE sydatum,
+      v_diff   TYPE i,
+      v_result TYPE dmbtr,
+      v_taxa   TYPE ukurs.
+
+*--------------------------------------------------*
+* Seleção das taxas de câmbio
+*--------------------------------------------------*
+SELECT fcurr tcurr gdatu ukurs
+  INTO TABLE it_tcurr
+  FROM tcurr
+  WHERE fcurr = p_fcurr
+    AND tcurr = p_tcurr.
+
+IF it_tcurr IS INITIAL.
+  WRITE: / 'Não há taxa de câmbio cadastrada para essas moedas.'.
+  EXIT.
+ENDIF.
+
+*--------------------------------------------------*
+* Encontrar a taxa mais recente
+*--------------------------------------------------*
+SORT it_tcurr BY gdatu DESCENDING.
+READ TABLE it_tcurr INTO wa_tcurr INDEX 1.
+
+CONVERT INVERTED-DATE wa_tcurr-gdatu INTO DATE v_data.
+
+v_diff = sy-datum - v_data.
+
+*--------------------------------------------------*
+* Escolher a taxa correta
+*--------------------------------------------------*
+IF v_diff > 30.
+  IF p_ukurs IS INITIAL.
+    WRITE: / 'A última taxa registrada tem mais de 30 dias e nenhuma taxa foi informada.'.
+    EXIT.
+  ELSE.
+    v_taxa = p_ukurs.  " Usa taxa da tela
+  ENDIF.
+ELSE.
+  v_taxa = wa_tcurr-ukurs.  " Usa taxa do sistema
+ENDIF.
+
+*--------------------------------------------------*
+* Calcular o valor convertido
+*--------------------------------------------------*
+v_result = p_dmbtr * v_taxa.
+
+*--------------------------------------------------*
+* Exibir Resultado
+*--------------------------------------------------*
+WRITE: / 'Moeda Origem:', p_fcurr,
+       / 'Moeda Destino:', p_tcurr,
+       / 'Valor Informado:', p_dmbtr,
+       / 'Taxa Usada:', v_taxa,
+       / 'Valor Convertido:', v_result.
