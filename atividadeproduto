@@ -1,0 +1,151 @@
+# 📄 Exercício ABAP — Relatório de Pedidos por Cliente e Produto
+
+Crie um programa ABAP que exiba um **relatório com os pedidos realizados pelos clientes**, mostrando as seguintes informações:
+
+- **Nome do Cliente**
+- **Nome do Produto**
+- **Data do Pedido**
+- **Quantidade**
+
+## 🎯 Funcionalidades
+
+O programa deve permitir ao usuário **filtrar os dados** por:
+
+- Intervalo de **Código do Cliente**
+- Intervalo de **Código do Produto**
+- Intervalo de **Data do Pedido**
+
+A exibição do relatório deve ser feita de duas formas, escolhidas via **radio buttons**:
+
+- **ALV Grid** com uso das funções `REUSE_ALV_GRID_DISPLAY` e `REUSE_ALV_FIELDCATALOG_MERGE`
+- **Exibição simples** usando `cl_demo_output=>display`
+
+## 🗃️ Tabelas utilizadas
+
+| Tabela         | Campos relevantes                      |
+|----------------|----------------------------------------|
+| `ZCLIENTE`     | `ZCOD_CLIENTE`, `ZNOME_CLIENTE`        |
+| `ZPRODUTO`     | `ZCOD_PRODUTO`, `ZNOME_PRODUTO`        |
+| `ZPEDIDO`      | `ZCOD_PEDIDO`, `ZCOD_CLIENTE`, `DATA_PEDIDO` |
+| `ZITENS_PEDIDO`| `ZCOD_PEDIDO`, `ZCOD_PRODUTO`, `QUANTIDADE` |
+
+## 📌 Requisitos técnicos
+
+- Declarar uma estrutura (`TYPES`) com os campos do relatório
+- Fazer `SELECT` com `JOIN` entre as tabelas
+- Aplicar os filtros com `SELECT-OPTIONS`
+- Preencher uma tabela interna com os dados
+- Exibir o resultado com `REUSE_ALV_GRID_DISPLAY` ou `cl_demo_output=>display`
+
+## ✅ Exemplo de Saída (ALV)
+
+| Nome do Cliente | Nome do Produto | Data do Pedido | Quantidade |
+|------------------|------------------|----------------|------------|
+| João da Silva    | Teclado Dell     | 15/06/2025     | 1          |
+| Maria Ferreira   | Impressora HP    | 20/06/2025     | 2          |
+
+
+
+REPORT zrelatorio_pedidos.
+
+TABLES: zcliente, zproduto, zpedido, zitens_pedido.
+
+" Tela de seleção
+SELECT-OPTIONS: s_cliente FOR zcliente-zcod_cliente,
+                s_produto FOR zproduto-zcod_produto,
+                s_data    FOR zpedido-data_pedido.
+
+PARAMETERS: p_alv    RADIOBUTTON GROUP g1 DEFAULT 'X',
+            p_texto  RADIOBUTTON GROUP g1.
+
+" Tipo do resultado
+TYPES: BEGIN OF ty_resultado,
+         znome_cliente TYPE zcliente-znome_cliente,
+         znome_produto TYPE zproduto-znome_produto,
+         data_pedido   TYPE zpedido-data_pedido,
+         quantidade    TYPE zitens_pedido-quantidade,
+       END OF ty_resultado.
+
+" Tabela e work area
+DATA: it_resultado TYPE TABLE OF ty_resultado,
+      wa_resultado TYPE ty_resultado.
+
+" ALV
+DATA: t_catalogo TYPE slis_t_fieldcat_alv,
+      wa_layout  TYPE slis_layout_alv.
+
+START-OF-SELECTION.
+
+  PERFORM f_selecao.
+  PERFORM f_exibe.
+
+*---------------------------------------------------------------------*
+*       FORM f_selecao
+*---------------------------------------------------------------------*
+FORM f_selecao .
+
+  SELECT b~znome_cliente,
+         d~znome_produto,
+         a~data_pedido,
+         c~quantidade
+    INTO TABLE it_resultado
+    FROM zpedido AS a
+    INNER JOIN zcliente AS b ON a~zcod_cliente = b~zcod_cliente
+    INNER JOIN zitens_pedido AS c ON a~zcod_pedido = c~zcod_pedido
+    INNER JOIN zproduto AS d ON c~zcod_produto = d~zcod_produto
+    WHERE a~zcod_cliente IN @s_cliente
+      AND c~zcod_produto IN @s_produto
+      AND a~data_pedido IN @s_data.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'Nenhum dado encontrado com os filtros.' TYPE 'I'.
+  ENDIF.
+
+ENDFORM.
+
+*---------------------------------------------------------------------*
+*       FORM f_exibe
+*---------------------------------------------------------------------*
+FORM f_exibe .
+
+  IF it_resultado IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  IF p_alv = 'X'.
+
+    " Monta o catálogo automaticamente
+    CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
+      EXPORTING
+        i_structure_name = 'TY_RESULTADO'
+      CHANGING
+        ct_fieldcat      = t_catalogo
+      EXCEPTIONS
+        program_error          = 1
+        inconsistent_interface = 2
+        OTHERS                 = 3.
+
+    " Layout com zebra
+    wa_layout-zebra             = 'X'.
+    wa_layout-colwidth_optimize = 'X'.
+
+    " Exibe o ALV
+    CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+      EXPORTING
+        is_layout   = wa_layout
+        it_fieldcat = t_catalogo
+      TABLES
+        t_outtab    = it_resultado
+      EXCEPTIONS
+        program_error = 1
+        OTHERS        = 2.
+
+  ELSE.
+
+    " Exibição simples
+    cl_demo_output=>display( it_resultado ).
+
+  ENDIF.
+
+ENDFORM.
+
