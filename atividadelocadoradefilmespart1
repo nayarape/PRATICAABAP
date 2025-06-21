@@ -1,0 +1,36 @@
+Tabela ZLOCADORA (ZCOD_FILME (key), ZNOME_FILME);
+Tabela ZCLIENTE (ZCOD_CLIENTE (key), ZNOME_CLIENTE;
+=====================================================
+Criar um programa para registrar as locações.
+
+Tabela ZMOVIMENTO na SE11(ZCOD_FILME (key), ZCOD_CLIENTE (key));
+
+Tela de seleção
+|-------------------------------------|
+| Código do Filme:   [_________]|
+| Código do Cliente: [_________]|
+|-------------------------------------|
+
+O programa irá inserir na tabela ZMOVIMENTO quais filmes foram alugados por quais clientes;
+
+
+REPORT zregistra_locacao.
+
+PARAMETERS: p_cod_filme   TYPE zlocadora-zcod_filme,
+            p_cod_cliente TYPE zcliente-zcod_cliente.
+
+DATA: wa_movimento TYPE zmovimento.
+
+wa_movimento-zcod_filme   = p_cod_filme.
+wa_movimento-zcod_cliente = p_cod_cliente.
+
+INSERT zmovimento FROM wa_movimento.
+
+ IF sy-subrc IS INITIAL.
+    COMMIT WORK AND WAIT.
+WRITE: / 'Locação registrada com sucesso!'.
+  ELSE.
+    ROLLBACK WORK.
+  WRITE: / 'Erro ao registrar locação.'.
+  ENDIF.
+
