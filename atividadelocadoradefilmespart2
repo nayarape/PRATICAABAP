@@ -1,0 +1,113 @@
+Segundo programa exibir um relatório para quais filmes foram alugados por quais clientes.
+
+|-------------------------------------|
+| Código do Filme:   [__]até[__]|
+| Código do Cliente: [__]até[__]|
+|-------------------------------------|
+| o Selecionar por Filme      |
+| o Selecionar por Cliente      |
+|-------------------------------------|
+
+De acordo com o radio button de 'Selecionar por Filme' ou 'Selecionar por Cliente', fazer um select diferente na ZMOVIMENTO:
+- Quando 'Selecionar por Filme' marcado:
+Selecionar ZMOVIMENTO por S_COD_FILME;
+
+- Quando 'Selecionar por Cliente' marcado:
+Selecionar ZMOVIMENTO por S_COD_Cliente;
+
+Exibir relatório ALV.
+
+|Nome do cliente|Nome do Filme|
+|-----------------------------|
+|aaaaaaaaaaaaaaa|bbbbbbbbbbbbb|
+|xxxxxxxxxxxxxxx|yyyyyyyyyyyyy|
+
+
+REPORT zrelatorio_locacoes_alv.
+
+TABLES: zmovimento, zlocadora, zcliente.
+
+SELECT-OPTIONS: s_cod_filme   FOR zlocadora-zcod_filme,
+                s_cod_cliente FOR zcliente-zcod_cliente.
+
+PARAMETERS: r_filme   RADIOBUTTON GROUP sel RADIOBUTTON DEFAULT 'X',
+            r_cliente RADIOBUTTON GROUP sel.
+
+" Definição do tipo para o SELECT e a tabela interna
+TYPES: BEGIN OF ty_resultado,
+         zcod_cliente  TYPE zmovimento-zcod_cliente,
+         zcod_filme    TYPE zmovimento-zcod_filme,
+         znome_cliente TYPE zcliente-znome_cliente,
+         znome_filme   TYPE zlocadora-znome_filme,
+       END OF ty_resultado.
+
+DATA: it_resultado TYPE TABLE OF ty_resultado,
+      wa_resultado TYPE ty_resultado.
+
+" Declaração das variáveis para o ALV
+DATA: t_catalogo TYPE slis_t_fieldcat_alv,
+      wa_layout  TYPE slis_layout_alv.
+
+START-OF-SELECTION.
+
+  CLEAR it_resultado.
+
+  IF r_filme = 'X'.
+    SELECT a~zcod_cliente, a~zcod_filme,
+           b~znome_cliente, c~znome_filme
+      INTO TABLE it_resultado
+      FROM zmovimento AS a
+      INNER JOIN zcliente AS b ON a~zcod_cliente = b~zcod_cliente
+      INNER JOIN zlocadora AS c ON a~zcod_filme = c~zcod_filme
+      WHERE a~zcod_filme IN @s_cod_filme.
+
+  ELSEIF r_cliente = 'X'.
+    SELECT a~zcod_cliente, a~zcod_filme,
+           b~znome_cliente, c~znome_filme
+      INTO TABLE it_resultado
+      FROM zmovimento AS a
+      INNER JOIN zcliente AS b ON a~zcod_cliente = b~zcod_cliente
+      INNER JOIN zlocadora AS c ON a~zcod_filme = c~zcod_filme
+      WHERE a~zcod_cliente IN @s_cod_cliente.
+  ENDIF.
+
+  IF it_resultado IS INITIAL.
+    WRITE: / 'Nenhum registro encontrado para os filtros informados.'.
+    EXIT.
+  ENDIF.
+
+  " Monta o catálogo de campos para o ALV automaticamente
+  CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
+    EXPORTING
+      i_structure_name = 'TY_RESULTADO'
+    CHANGING
+      ct_fieldcat      = t_catalogo
+    EXCEPTIONS
+      inconsistent_interface = 1
+      program_error          = 2
+      OTHERS                 = 3.
+
+  IF sy-subrc <> 0.
+    WRITE: / 'Erro ao montar catálogo de campos para o ALV'.
+    EXIT.
+  ENDIF.
+
+  " Configurações básicas do layout do ALV
+  wa_layout-zebra             = 'X'.
+  wa_layout-colwidth_optimize = 'X'.
+
+  " Exibe o ALV na tela
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      is_layout   = wa_layout
+      it_fieldcat = t_catalogo
+    TABLES
+      t_outtab    = it_resultado
+    EXCEPTIONS
+      program_error = 1
+      OTHERS        = 2.
+
+  IF sy-subrc <> 0.
+    WRITE: / 'Erro ao exibir o ALV'.
+  ENDIF.
+
