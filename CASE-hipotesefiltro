@@ -1,0 +1,100 @@
+✅ DESAFIO 2: Tela de Seleção com Filtros
+🎯 Objetivo:
+Permitir que o usuário filtre os dados antes de exibir no ALV, usando:
+Número do Pedido (VBELN)
+Cliente (KUNNR)
+Data de Entrega (LFDAT)
+
+
+REPORT zrelatorio_pedidos_filtros.
+
+TABLES: zgnn_ped_cabec,
+        zgnn_ped_item,
+        zgnn_ped_carga.
+
+TYPE-POOLS: slis.
+
+TYPES: BEGIN OF ty_dados,
+         vbeln TYPE zgnn_ped_cabec-vbeln,
+         kunnr TYPE zgnn_ped_cabec-kunnr,
+         matnr TYPE zgnn_ped_item-matnr,
+         menge TYPE zgnn_ped_item-menge,
+         lfdat TYPE zgnn_ped_carga-lfdat,
+       END OF ty_dados.
+
+*--(Se você filtrar por um campo, mas não quer mostrar esse campo no ALV, não precisa colocá-lo no TYPES.
+Se você quer mostrar esse campo no ALV, aí sim precisa colocá-lo no TYPES e incluí-lo no SELECT.)
+
+DATA: it_dados     TYPE STANDARD TABLE OF ty_dados,
+      wa_dados     TYPE ty_dados,
+      it_fieldcat  TYPE slis_t_fieldcat_alv,
+      wa_fieldcat  TYPE slis_fieldcat_alv.
+
+*-- Seleção do usuário
+SELECT-OPTIONS: s_vbeln FOR zgnn_ped_cabec-vbeln,
+                s_kunnr FOR zgnn_ped_cabec-kunnr,
+                s_lfdat FOR zgnn_ped_carga-lfdat.
+
+START-OF-SELECTION.
+
+*-- Consulta com filtros usando WHERE dinâmico
+SELECT 
+  a~vbeln,
+  a~kunnr,
+  b~matnr,
+  b~menge,
+  c~lfdat
+  INTO TABLE it_dados
+  FROM zgnn_ped_cabec AS a
+  INNER JOIN zgnn_ped_item AS b ON a~vbeln = b~vbeln
+  INNER JOIN zgnn_ped_carga AS c ON a~vbeln = c~vbeln
+  WHERE a~vbeln IN @s_vbeln
+    AND a~kunnr IN @s_kunnr
+    AND c~lfdat IN @s_lfdat.
+
+IF it_dados IS INITIAL.
+  MESSAGE 'Nenhum dado encontrado com os filtros aplicados.' TYPE 'I'.
+  EXIT.
+ENDIF.
+
+*-- Montar campos do ALV
+PERFORM monta_fieldcat.
+
+*-- Exibir ALV com os dados filtrados
+CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+  EXPORTING
+    it_fieldcat = it_fieldcat
+  TABLES
+    t_outtab    = it_dados.
+
+*---------------------------------------------------------------------*
+*       Form  monta_fieldcat                                          *
+*---------------------------------------------------------------------*
+FORM monta_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'VBELN'.
+  wa_fieldcat-seltext_m = 'Nº Pedido'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'KUNNR'.
+  wa_fieldcat-seltext_m = 'Cliente'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'MATNR'.
+  wa_fieldcat-seltext_m = 'Material'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'MENGE'.
+  wa_fieldcat-seltext_m = 'Quantidade'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'LFDAT'.
+  wa_fieldcat-seltext_m = 'Dt Entrega'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+ENDFORM.
