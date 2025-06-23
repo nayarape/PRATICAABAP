@@ -1,0 +1,96 @@
+Descrição:
+Crie um relatório do tipo ALV que exiba:
+
+Número do pedido (ZGNN_PED_CABEC)
+Cliente
+Código do material (ZGNN_PED_ITEM)
+Quantidade
+Data de entrega (ZGNN_PED_CARGA)
+
+Requisitos:
+Fazer os JOINs entre as três tabelas usando o número do pedido.
+Exibir os dados em ALV (cl_salv_table ou REUSE_ALV_GRID_DISPLAY).
+Adicionar um botão de exportar para Excel.
+
+  REPORT zrelatorio_pedidos_fc.
+
+TABLES: zgnn_ped_cabec,
+        zgnn_ped_item,
+        zgnn_ped_carga.
+
+TYPE-POOLS: slis. (Isso permite montar o catálogo de campos (field catalog) do ALV com base em tipos já prontos do SAP.)
+  
+TYPES: BEGIN OF ty_dados,
+         vbeln TYPE zgnn_ped_cabec-vbeln,
+         kunnr TYPE zgnn_ped_cabec-kunnr,
+         matnr TYPE zgnn_ped_item-matnr,
+         menge TYPE zgnn_ped_item-menge,
+         lfdat TYPE zgnn_ped_carga-lfdat,
+       END OF ty_dados.
+
+DATA: it_dados     TYPE STANDARD TABLE OF ty_dados,
+      wa_dados     TYPE ty_dados,
+      it_fieldcat  TYPE slis_t_fieldcat_alv,
+      wa_fieldcat  TYPE slis_fieldcat_alv.
+
+START-OF-SELECTION.
+
+*-- Seleção dos dados combinando as três tabelas
+SELECT 
+  a~vbeln,
+  a~kunnr,
+  b~matnr,
+  b~menge,
+  c~lfdat
+  INTO TABLE it_dados
+  FROM zgnn_ped_cabec AS a
+  INNER JOIN zgnn_ped_item AS b ON a~vbeln = b~vbeln
+  INNER JOIN zgnn_ped_carga AS c ON a~vbeln = c~vbeln.
+
+IF sy-subrc <> 0.
+  MESSAGE 'Nenhum dado encontrado.' TYPE 'I'.
+  EXIT.
+ENDIF.
+
+*-- Montagem do Field Catalog
+PERFORM monta_fieldcat.
+
+*-- Exibição do ALV
+CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+  EXPORTING
+    i_structure_name = ''
+    it_fieldcat      = it_fieldcat
+  TABLES
+    t_outtab         = it_dados.
+
+*---------------------------------------------------------------------*
+*       Form  monta_fieldcat                                          *
+*---------------------------------------------------------------------*
+FORM monta_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'VBELN'.
+  wa_fieldcat-seltext_m = 'Nº Pedido'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'KUNNR'.
+  wa_fieldcat-seltext_m = 'Cliente'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'MATNR'.
+  wa_fieldcat-seltext_m = 'Material'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'MENGE'.
+  wa_fieldcat-seltext_m = 'Quantidade'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'LFDAT'.
+  wa_fieldcat-seltext_m = 'Dt Entrega'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+ENDFORM.
