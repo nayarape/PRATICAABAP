@@ -1,0 +1,217 @@
+✅ DESAFIO 3: Geração de SmartForm com dados do pedido
+🎯 Objetivo:Criar um SmartForm que gere um documento do pedido, contendo:
+
+Cabeçalho do pedido (cliente, data, número)
+Itens do pedido (material, quantidade)
+Informações de carga (data de entrega, peso, etc.)
+
+REPORT zsmartform_pedido.
+
+TABLES: zgnn_ped_cabec,
+        zgnn_ped_item,
+        zgnn_ped_carga.
+
+PARAMETERS: p_vbeln TYPE zgnn_ped_cabec-vbeln.
+
+* Estruturas de trabalho
+DATA: wa_cabec TYPE zgnn_ped_cabec,
+      it_itens TYPE STANDARD TABLE OF zgnn_ped_item,
+      it_carga TYPE STANDARD TABLE OF zgnn_ped_carga.
+
+* Function module gerado pelo SmartForm
+DATA: fm_name TYPE rs38l_fnam.
+
+START-OF-SELECTION.
+
+* Buscar dados do cabeçalho
+SELECT SINGLE * INTO wa_cabec
+  FROM zgnn_ped_cabec
+  WHERE vbeln = @p_vbeln.
+
+IF sy-subrc <> 0.
+  MESSAGE 'Pedido não encontrado.' TYPE 'E'.
+ENDIF.
+
+* Buscar itens do pedido
+SELECT * INTO TABLE it_itens
+  FROM zgnn_ped_item
+  WHERE vbeln = @p_vbeln.
+
+* Buscar dados de carga
+SELECT * INTO TABLE it_carga
+  FROM zgnn_ped_carga
+  WHERE vbeln = @p_vbeln.
+
+* Obter nome do SmartForm gerado
+CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+  EXPORTING
+    formname           = 'ZSF_PEDIDO_CLIENTE'
+  IMPORTING
+    fm_name            = fm_name
+  EXCEPTIONS
+    no_form            = 1
+    no_function_module = 2
+    OTHERS             = 3.
+
+IF sy-subrc <> 0.
+  MESSAGE 'Erro ao buscar função do SmartForm.' TYPE 'E'.
+ENDIF.
+
+* Chamar o SmartForm
+CALL FUNCTION fm_name
+  EXPORTING
+    cabecalho = wa_cabec
+  TABLES
+    itens     = it_itens
+    cargas    = it_carga.
+
+
+## 🎨 **Layout do SmartForm: ZSF\_PEDIDO\_CLIENTE**
+
+### 📌 Passo 1: Criar o SmartForm
+
+* Acesse a transação: `SMARTFORMS`
+* Nome: `ZSF_PEDIDO_CLIENTE`
+* Clique em **Create**
+
+---
+
+## 🧱 ESTRUTURA GERAL DO FORMULÁRIO
+
+```plaintext
++--------------------------------------------------------+
+| LOGO DA EMPRESA (opcional)                            |
+| TÍTULO: Pedido de Venda                                |
++--------------------------------------------------------+
+
+Informações do Cabeçalho
+-------------------------
+Pedido Nº:          &CABECALHO-VBELN&
+Cliente:            &CABECALHO-KUNNR&
+Data Criação:       &CABECALHO-ERDAT&
+Status:             &CABECALHO-STATUS&
+
+Itens do Pedido
+---------------
+| Material | Descrição | Quantidade |
+|----------|-----------|------------|
+| &ITENS-MATNR& | &ITENS-ARKTX& | &ITENS-MENGE& |
+
+Informações de Carga
+---------------------
+Data de Entrega:     &CARGAS-LFDAT&
+Peso Total:          &CARGAS-BRGEW& (se existir)
+
++--------------------------------------------------------+
+```
+
+---
+
+## 🔨 Passo 2: Configurar as Janelas no SmartForm
+
+### 📂 Navegue pelo "Tree" da esquerda (Node Tree)
+
+1. **Global Definitions > Import**
+
+   * Crie:
+
+     * `CABECALHO` TYPE `ZGNN_PED_CABEC`
+     * `ITENS` TYPE `ZGNN_PED_ITEM` (com `Type Table`)
+     * `CARGAS` TYPE `ZGNN_PED_CARGA` (com `Type Table`)
+
+---
+
+## 🧩 Passo 3: Criar Layout no Node Tree
+
+### 1. **Main Window** (obrigatória)
+
+Clique com botão direito em *Main Window* → **Create → Text**
+
+* **Texto:** `'Pedido de Venda'`
+* Alinhar ao centro (Output Options → Center)
+
+---
+
+### 2. **Criar um Text para o Cabeçalho**
+
+Botão direito em Main Window → **Create → Text**
+
+* **Texto:**
+
+```plaintext
+Pedido Nº: &CABECALHO-VBELN&
+Cliente: &CABECALHO-KUNNR&
+Data: &CABECALHO-ERDAT&
+Status: &CABECALHO-STATUS&
+```
+
+---
+
+### 3. **Criar Tabela de Itens**
+
+Botão direito em Main Window → **Create → Table**
+
+* **Data**:
+
+  * Internal Table: `ITENS`
+  * Work Area: `WA_ITENS`
+
+#### Subnós do Table:
+
+* **Table Line** (linha de dados)
+
+  * Crie 3 células:
+
+    * `&WA_ITENS-MATNR&`
+    * `&WA_ITENS-ARKTX&`
+    * `&WA_ITENS-MENGE&`
+
+* **Header Line** (cabeçalho da tabela)
+
+  * Crie as labels:
+
+    * "Material" | "Descrição" | "Quantidade"
+
+---
+
+### 4. **Criar Tabela de Cargas**
+
+Botão direito em Main Window → **Create → Table**
+
+* **Internal Table:** `CARGAS`
+* **Work Area:** `WA_CARGAS`
+
+#### Subnós:
+
+* Header Line:
+
+  * "Data Entrega" | "Peso" | "Volume" (se tiver)
+
+* Table Line:
+
+  * `&WA_CARGAS-LFDAT&`
+  * `&WA_CARGAS-BRGEW&` *(peso bruto, se tiver)*
+  * `&WA_CARGAS-NTGEW&` *(peso líquido, opcional)*
+
+---
+
+## ✅ Finalizar
+
+* Salve
+* Ative o SmartForm
+* Execute o programa `ZSMARTFORM_PEDIDO` para testar
+* Ele chamará o formulário com os dados do pedido
+
+---
+
+## 📌 Dica de Apresentação
+
+Se for numa entrevista ou entrega técnica:
+
+* Mostre o layout impresso em PDF (ou via print)
+* Justifique o design: "agrupamento lógico dos dados para facilitar a leitura"
+* Pode até adicionar uma observação tipo:
+
+  * "Fiz um espaço reservado para logotipo"
+  * "Cabeçalho e agrupamento seguem padrão SAP para formulários de pedidos"
+
