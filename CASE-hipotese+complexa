@@ -1,0 +1,131 @@
+Desafio Técnico ABAP – Relatório Integrado de Pedidos
+🎯 Objetivo
+Desenvolver um programa ABAP Z que integre informações das tabelas de pedidos de venda personalizadas:
+
+ZGNN_PED_CABEC (cabeçalho dos pedidos)
+
+ZGNN_PED_ITEM (itens do pedido)
+
+ZGNN_PED_CARGA (dados logísticos da carga)
+
+O programa deve gerar um relatório consolidado com dados dos pedidos, itens e carga, aplicando boas práticas de desempenho e organização de dados.
+
+🧰 Requisitos Funcionais
+📌 Tela de Seleção
+Implemente uma tela de seleção com os seguintes filtros:
+Número do Pedido (NUM_PEDIDO)
+Código do Cliente (COD_CLIENTE)
+Esses filtros devem ser usados para selecionar os registros da tabela ZGNN_PED_CABEC.
+
+📌 Processamento
+O programa deve:
+Selecionar os pedidos da tabela ZGNN_PED_CABEC com base nos filtros.
+Para os pedidos encontrados, buscar os itens na tabela ZGNN_PED_ITEM usando FOR ALL ENTRIES.
+Para os mesmos pedidos, buscar os dados de carga na tabela ZGNN_PED_CARGA também usando FOR ALL ENTRIES.
+Para cada combinação de pedido e item:
+Preencher uma estrutura com dados do cabeçalho, item e carga.
+Usar READ TABLE ... BINARY SEARCH para encontrar a carga correspondente.
+Usar APPEND para montar a tabela final.
+Exibir os resultados em um relatório ALV.
+
+
+## ✅ Código ABAP Completo
+
+REPORT znn_relatorio_pedidos_completo.
+
+TABLES: zgNN_ped_cabec, zgNN_ped_item, zgNN_ped_carga.
+
+TYPES: BEGIN OF ty_pedido,
+         num_pedido     TYPE zgNN_ped_cabec-num_pedido,
+         cod_cliente    TYPE zgNN_ped_cabec-cod_cliente,
+         data_pedido    TYPE zgNN_ped_cabec-data_pedido,
+         cod_item       TYPE zgNN_ped_item-cod_item,
+         qtd_item       TYPE zgNN_ped_item-qtd_item,
+         tipo_carga     TYPE zgNN_ped_carga-tipo_carga,
+         data_entrega   TYPE zgNN_ped_carga-data_entrega,
+       END OF ty_pedido.
+
+DATA: it_pedidos_cabec TYPE TABLE OF zgNN_ped_cabec,
+      it_itens         TYPE TABLE OF zgNN_ped_item,
+      it_cargas        TYPE TABLE OF zgNN_ped_carga,
+      it_relatorio     TYPE TABLE OF ty_pedido,
+      wa_relatorio     TYPE ty_pedido.
+
+SELECT-OPTIONS: s_pedido  FOR zgNN_ped_cabec-num_pedido,
+                s_cliente FOR zgNN_ped_cabec-cod_cliente.
+
+START-OF-SELECTION.
+
+  " Buscar pedidos da tabela CABEC
+  SELECT * FROM zgNN_ped_cabec INTO TABLE @it_pedidos_cabec
+    WHERE num_pedido IN @s_pedido
+      AND cod_cliente IN @s_cliente.
+
+  IF it_pedidos_cabec IS INITIAL.
+    MESSAGE 'Nenhum pedido encontrado.' TYPE 'I'.
+    EXIT.
+  ENDIF.
+
+  " Buscar itens relacionados
+  SELECT * FROM zgNN_ped_item INTO TABLE @it_itens
+    FOR ALL ENTRIES IN @it_pedidos_cabec
+    WHERE num_pedido = @it_pedidos_cabec-num_pedido.
+
+  " Buscar cargas relacionadas
+  SELECT * FROM zgNN_ped_carga INTO TABLE @it_cargas
+    FOR ALL ENTRIES IN @it_pedidos_cabec
+    WHERE num_pedido = @it_pedidos_cabec-num_pedido.
+
+  " Ordenar tabela de cargas para binary search
+  SORT it_cargas BY num_pedido.
+
+  " Loop principal para montar estrutura de saída
+  LOOP AT it_pedidos_cabec INTO DATA(wa_cabec).
+
+    LOOP AT it_itens INTO DATA(wa_item)
+         WHERE num_pedido = wa_cabec-num_pedido.
+
+      CLEAR wa_relatorio.
+
+      wa_relatorio-num_pedido  = wa_cabec-num_pedido.
+      wa_relatorio-cod_cliente = wa_cabec-cod_cliente.
+      wa_relatorio-data_pedido = wa_cabec-data_pedido.
+      wa_relatorio-cod_item    = wa_item-cod_item.
+      wa_relatorio-qtd_item    = wa_item-qtd_item.
+
+      " Buscar carga do pedido com binary search
+      READ TABLE it_cargas INTO DATA(wa_carga)
+           WITH KEY num_pedido = wa_cabec-num_pedido
+           BINARY SEARCH.
+
+      IF sy-subrc = 0.
+        wa_relatorio-tipo_carga   = wa_carga-tipo_carga.
+        wa_relatorio-data_entrega = wa_carga-data_entrega.
+      ENDIF.
+
+      APPEND wa_relatorio TO it_relatorio.
+
+    ENDLOOP.
+
+  ENDLOOP.
+
+  " Exibição ALV
+  PERFORM exibir_alv.
+
+*---------------------------------------------------------------------*
+*       FORM exibir_alv                                               *
+*---------------------------------------------------------------------*
+FORM exibir_alv.
+  DATA: lt_fieldcat TYPE lvc_t_fcat,
+        ls_fieldcat TYPE lvc_s_fcat.
+
+  " Gerar field catalog simples (auto)
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = sy-repid
+      it_fieldcat        = lt_fieldcat
+    TABLES
+      t_outtab           = it_relatorio.
+ENDFORM.
+
+
