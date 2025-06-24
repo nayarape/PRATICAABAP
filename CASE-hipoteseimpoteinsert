@@ -1,0 +1,248 @@
+Desenvolver um programa em ABAP capaz de importar um arquivo .txt contendo dados de pedidos de venda,
+classificados por tipo (cabeçalho, item e carga), identificados por letras (H, I, C) no início de cada linha.
+O programa deve:
+Permitir ao usuário selecionar o arquivo a partir do seu computador (F4)
+Ler cada linha do arquivo e separá-la de acordo com o tipo de dado
+Armazenar os dados em tabelas internas específicas
+Inserir os dados validados nas tabelas Z criadas previamente:
+ZT07_PED_CABEC
+ZT07_PED_ITEM
+ZT07_PED_CARGA
+Mostrar um resumo com número de registros inseridos e com erro
+Exibir, ao final, os itens inseridos em uma tabela ALV formatada com nomes amigáveis, utilizando REUSE_ALV_GRID_DISPLAY com fieldcat.
+
+REPORT znn_interface_pedidos MESSAGE-ID zmnn_case.
+
+"-----------------------------*
+" DECLARAÇÕES GLOBAIS (TOP)
+"-----------------------------*
+TYPES: BEGIN OF ty_upload,
+         linha TYPE string,
+       END OF ty_upload,
+
+       BEGIN OF ty_cabec,
+         identificador TYPE char1,
+         vbeln         TYPE zt07_ped_cabec-vbeln,
+         erdat         TYPE zt07_ped_cabec-erdat,
+         ernam         TYPE zt07_ped_cabec-ernam,
+       END OF ty_cabec,
+
+       BEGIN OF ty_item,
+         identificador TYPE char1,
+         vbeln         TYPE zt07_ped_item-vbeln,
+         posnr         TYPE zt07_ped_item-posnr,
+         matnr         TYPE zt07_ped_item-matnr,
+         maktx         TYPE zt07_ped_item-maktx,
+         fkimg         TYPE zt07_ped_item-fkimg,
+         netwr         TYPE zt07_ped_item-netwr,
+         meins         TYPE zt07_ped_item-meins,
+         waers         TYPE zt07_ped_item-waers,
+       END OF ty_item,
+
+       BEGIN OF ty_carga,
+         identificador TYPE char1,
+         vbeln         TYPE zt07_ped_carga-vbeln,
+         posnr         TYPE zt07_ped_carga-posnr,
+         matnr         TYPE zt07_ped_carga-matnr,
+         fkimg         TYPE zt07_ped_carga-fkimg,
+         netwr         TYPE zt07_ped_carga-netwr,
+         meins         TYPE zt07_ped_carga-meins,
+         waers         TYPE zt07_ped_carga-waers,
+       END OF ty_carga,
+
+       BEGIN OF ty_saida,
+         vbeln TYPE zt07_ped_item-vbeln,
+         posnr TYPE zt07_ped_item-posnr,
+         matnr TYPE zt07_ped_item-matnr,
+         maktx TYPE zt07_ped_item-maktx,
+         fkimg TYPE zt07_ped_item-fkimg,
+         netwr TYPE zt07_ped_item-netwr,
+         meins TYPE zt07_ped_item-meins,
+         waers TYPE zt07_ped_item-waers,
+       END OF ty_saida.
+
+DATA: t_upload TYPE TABLE OF ty_upload,
+      t_cabec  TYPE TABLE OF ty_cabec,
+      t_item   TYPE TABLE OF ty_item,
+      t_carga  TYPE TABLE OF ty_carga,
+      it_saida TYPE STANDARD TABLE OF ty_saida.
+
+DATA: wa_upload TYPE ty_upload,
+      wa_cabec  TYPE ty_cabec,
+      wa_item   TYPE ty_item,
+      wa_carga  TYPE ty_carga,
+      wa_saida  TYPE ty_saida.
+
+DATA: p_file TYPE rlgrap-filename.
+
+"-----------------------------*
+" TELA DE SELEÇÃO (SEL)
+"-----------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+PARAMETERS: p_file TYPE rlgrap-filename OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK b1.
+TEXT-001 = 'Selecionar Arquivo de Pedidos'.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+  CALL FUNCTION 'F4_FILENAME'
+    IMPORTING
+      file_name = p_file.
+
+"-----------------------------*
+" SUBROTINAS (F01)
+"-----------------------------*
+
+FORM f_upload_arquivo.
+  CALL FUNCTION 'GUI_UPLOAD'
+    EXPORTING
+      filename = p_file
+      filetype = 'ASC'
+    TABLES
+      data_tab = t_upload
+    EXCEPTIONS
+      OTHERS   = 1.
+  IF sy-subrc <> 0.
+    MESSAGE e003 WITH 'Erro ao carregar o arquivo.'.
+    RETURN.
+  ENDIF.
+ENDFORM.
+
+FORM f_processa_arquivo.
+  LOOP AT t_upload INTO wa_upload.
+    CASE wa_upload-linha+0(1).
+      WHEN 'H'.
+        SPLIT wa_upload-linha AT ';'
+          INTO wa_cabec-identificador
+               wa_cabec-vbeln
+               wa_cabec-erdat
+               wa_cabec-ernam.
+        APPEND wa_cabec TO t_cabec.
+        CLEAR wa_cabec.
+      WHEN 'I'.
+        SPLIT wa_upload-linha AT ';'
+          INTO wa_item-identificador
+               wa_item-vbeln
+               wa_item-posnr
+               wa_item-matnr
+               wa_item-maktx
+               wa_item-fkimg
+               wa_item-netwr
+               wa_item-meins
+               wa_item-waers.
+        APPEND wa_item TO t_item.
+        CLEAR wa_item.
+      WHEN 'C'.
+        SPLIT wa_upload-linha AT ';'
+          INTO wa_carga-identificador
+               wa_carga-vbeln
+               wa_carga-posnr
+               wa_carga-matnr
+               wa_carga-fkimg
+               wa_carga-netwr
+               wa_carga-meins
+               wa_carga-waers.
+        APPEND wa_carga TO t_carga.
+        CLEAR wa_carga.
+      WHEN OTHERS.
+        WRITE: / 'Identificador desconhecido na linha:', wa_upload-linha.
+    ENDCASE.
+  ENDLOOP.
+ENDFORM.
+
+FORM f_grava_tabelas.
+  DATA: lv_inseridos TYPE i VALUE 0,
+        lv_erros     TYPE i VALUE 0.
+
+  LOOP AT t_cabec INTO wa_cabec.
+    INSERT zt07_ped_cabec VALUES VALUE #(
+      vbeln       = wa_cabec-vbeln
+      erdat       = wa_cabec-erdat
+      ernam       = wa_cabec-ernam
+      data_carga  = sy-datum
+      hora_carga  = sy-uzeit ).
+    IF sy-subrc = 0. lv_inseridos += 1. ELSE. lv_erros += 1. ENDIF.
+  ENDLOOP.
+
+  LOOP AT t_item INTO wa_item.
+    INSERT zt07_ped_item VALUES VALUE #(
+      vbeln       = wa_item-vbeln
+      posnr       = wa_item-posnr
+      matnr       = wa_item-matnr
+      maktx       = wa_item-maktx
+      fkimg       = wa_item-fkimg
+      netwr       = wa_item-netwr
+      meins       = wa_item-meins
+      waers       = wa_item-waers
+      data_carga  = sy-datum
+      hora_carga  = sy-uzeit ).
+    IF sy-subrc = 0. lv_inseridos += 1. ELSE. lv_erros += 1. ENDIF.
+  ENDLOOP.
+
+  LOOP AT t_carga INTO wa_carga.
+    INSERT zt07_ped_carga VALUES VALUE #(
+      vbeln       = wa_carga-vbeln
+      posnr       = wa_carga-posnr
+      matnr       = wa_carga-matnr
+      fkimg       = wa_carga-fkimg
+      netwr       = wa_carga-netwr
+      meins       = wa_carga-meins
+      waers       = wa_carga-waers
+      erdat       = sy-datum
+      ernam       = sy-uname
+      data_carga  = sy-datum ).
+    IF sy-subrc = 0. lv_inseridos += 1. ELSE. lv_erros += 1. ENDIF.
+  ENDLOOP.
+
+  COMMIT WORK.
+
+  WRITE: / 'Gravação finalizada:',
+         / 'Registros inseridos:', lv_inseridos,
+         / 'Registros com erro: ', lv_erros,
+         / ' '.
+ENDFORM.
+
+FORM f_exibir_alv.
+
+  LOOP AT t_item INTO wa_item.
+    wa_saida-vbeln = wa_item-vbeln.
+    wa_saida-posnr = wa_item-posnr.
+    wa_saida-matnr = wa_item-matnr.
+    wa_saida-maktx = wa_item-maktx.
+    wa_saida-fkimg = wa_item-fkimg.
+    wa_saida-netwr = wa_item-netwr.
+    wa_saida-meins = wa_item-meins.
+    wa_saida-waers = wa_item-waers.
+    APPEND wa_saida TO it_saida.
+  ENDLOOP.
+
+  DATA: it_fieldcat TYPE slis_t_fieldcat_alv,
+        wa_fieldcat TYPE slis_fieldcat_alv.
+
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'VBELN'. wa_fieldcat-seltext_l = 'Código do Pedido'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'POSNR'. wa_fieldcat-seltext_l = 'Item'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'MATNR'. wa_fieldcat-seltext_l = 'Material'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'MAKTX'. wa_fieldcat-seltext_l = 'Descrição'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'FKIMG'. wa_fieldcat-seltext_l = 'Quantidade'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'NETWR'. wa_fieldcat-seltext_l = 'Valor Total'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'MEINS'. wa_fieldcat-seltext_l = 'Unidade'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'WAERS'. wa_fieldcat-seltext_l = 'Moeda'. APPEND wa_fieldcat TO it_fieldcat.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      it_fieldcat = it_fieldcat
+    TABLES
+      t_outtab    = it_saida
+    EXCEPTIONS
+      others      = 1.
+
+ENDFORM.
+
+"-----------------------------*
+" PROGRAMA PRINCIPAL
+"-----------------------------*
+START-OF-SELECTION.
+
+  PERFORM f_upload_arquivo.
+  PERFORM f_processa_arquivo.
+  PERFORM f_grava_tabelas.
+  PERFORM f_exibir_alv.
