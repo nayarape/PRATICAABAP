@@ -1,0 +1,95 @@
+O que esse programa faz?
+Esse relatório ABAP simula um cenário de gestão de pedidos onde:
+Ele filtra pedidos de venda de uma tabela Z (ZGNN_PED_CABEC) com base em critérios como número, cliente, data, status e se está ativo.
+Após filtrar os dados, ele analisa quantos pedidos cada cliente fez.
+Ele exibe os pedidos em uma tabela ALV (para navegação e visualização fácil).
+Ele também escreve no log do SAP (WRITE) os clientes que fizeram mais de um pedido, como um mini relatório estatístico.
+Para cada pedido:
+   -> Cliente já está na lista? (READ TABLE)
+      - Sim: soma +1 (MODIFY)
+      - Não: adiciona com valor 1 (APPEND)
+
+REPORT znn_pedidos_com_analise.
+
+TABLES: zgNN_ped_cabec.
+
+TYPES: BEGIN OF ty_pedido,
+         num_pedido  TYPE zgNN_ped_cabec-num_pedido,
+         cod_cliente TYPE zgNN_ped_cabec-cod_cliente,
+         data_ped    TYPE zgNN_ped_cabec-data_pedido,
+         status      TYPE zgNN_ped_cabec-status,
+         flag_ativo  TYPE zgNN_ped_cabec-flag_ativo,
+         ernam       TYPE zgNN_ped_cabec-ernam,
+         aedat       TYPE zgNN_ped_cabec-aedat,
+       END OF ty_pedido.
+
+TYPES: BEGIN OF ty_cliente,
+         cod_cliente TYPE zgNN_ped_cabec-cod_cliente,
+         qtd_pedidos TYPE i,
+       END OF ty_cliente.
+
+DATA: it_pedidos  TYPE STANDARD TABLE OF ty_pedido,
+      wa_pedido   TYPE ty_pedido,
+      it_clientes TYPE STANDARD TABLE OF ty_cliente,
+      wa_cliente  TYPE ty_cliente.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+SELECT-OPTIONS: s_pedido  FOR zgNN_ped_cabec-num_pedido,
+                s_cliente FOR zgNN_ped_cabec-cod_cliente,
+                s_data    FOR zgNN_ped_cabec-data_pedido,
+                s_status  FOR zgNN_ped_cabec-status,
+                s_flag    FOR zgNN_ped_cabec-flag_ativo.
+SELECTION-SCREEN END OF BLOCK b1.
+
+START-OF-SELECTION.
+
+  SELECT num_pedido
+         cod_cliente
+         data_pedido
+         status
+         flag_ativo
+         ernam
+         aedat
+    INTO TABLE @it_pedidos
+    FROM zgNN_ped_cabec
+    WHERE num_pedido  IN @s_pedido
+      AND cod_cliente IN @s_cliente
+      AND data_pedido IN @s_data
+      AND status      IN @s_status
+      AND flag_ativo  IN @s_flag.
+
+  LOOP AT it_pedidos INTO wa_pedido.
+    CLEAR wa_cliente.
+    READ TABLE it_clientes INTO wa_cliente WITH KEY cod_cliente = wa_pedido-cod_cliente.
+    IF sy-subrc = 0.
+      wa_cliente-qtd_pedidos = wa_cliente-qtd_pedidos + 1.
+      MODIFY it_clientes FROM wa_cliente INDEX sy-tabix.
+    ELSE.
+      wa_cliente-cod_cliente = wa_pedido-cod_cliente.
+      wa_cliente-qtd_pedidos = 1.
+      APPEND wa_cliente TO it_clientes.
+    ENDIF.
+  ENDLOOP.
+
+  " Exibir clientes com mais de um pedido
+  WRITE: / 'Clientes com mais de um pedido:'.
+  LOOP AT it_clientes INTO wa_cliente WHERE qtd_pedidos > 1.
+    WRITE: / 'Cliente:', wa_cliente-cod_cliente,
+             'Pedidos:', wa_cliente-qtd_pedidos.
+  ENDLOOP.
+
+  PERFORM exibir_alv.
+
+*---------------------------------------------------------------------*
+*       FORM exibir_alv                                               *
+*---------------------------------------------------------------------*
+FORM exibir_alv.
+  DATA: lt_fieldcat TYPE lvc_t_fcat.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = sy-repid
+      it_fieldcat        = lt_fieldcat
+    TABLES
+      t_outtab           = it_pedidos.
+ENDFORM.
