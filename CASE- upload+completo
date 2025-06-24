@@ -1,0 +1,212 @@
+Objetivo:
+Desenvolver um programa ABAP que permita carregar um arquivo .txt com dados de pedidos de venda 
+e fazer a inserção automática nas seguintes tabelas customizadas Z criadas anteriormente:
+ZT07_PED_CABEC – Tabela de cabeçalho do pedido
+ZT07_PED_ITEM – Tabela de itens do pedido
+ZT07_PED_CARGA – Tabela com dados de carga dos itens
+
+🧠 Requisitos funcionais:
+Tela de seleção com campo para escolher o arquivo .txt
+Deve permitir a busca do arquivo pelo computador (F4 Help)
+Leitura do arquivo e separação dos campos
+A partir de cada linha, os campos devem ser extraídos com base no separador ;
+Verificação e inserção nas tabelas
+Inserir o cabeçalho (ZT07_PED_CABEC) apenas se ainda não existir
+Verificar se o item (VBELN + POSNR) já existe em ZT07_PED_ITEM
+Se sim, deve ignorar a linha e registrar como duplicada
+Se não, inserir nas tabelas ITEM e CARGa
+Registrar a data e hora da carga nos campos DATA_CARGA e HORA_CARGA
+Exibir ao final:
+Um resumo simples com:
+Total de registros processados
+Quantos foram inseridos
+Quantos foram ignorados
+E um relatório ALV mostrando os itens inseridos
+
+
+
+REPORT znn_upload_zt07_completo.
+
+TABLES: zt07_ped_cabec.
+
+"----------------------------
+" SELECTION SCREEN
+"----------------------------
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+
+PARAMETERS: p_file TYPE rlgrap-filename OBLIGATORY.
+
+SELECTION-SCREEN END OF BLOCK b1.
+
+TEXT-001 = 'Selecionar Arquivo de Pedidos'.
+
+" Caixa de seleção para buscar o arquivo no PC
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+  CALL FUNCTION 'F4_FILENAME'
+    IMPORTING
+      file_name = p_file.
+
+"----------------------------
+" DECLARAÇÕES GERAIS
+"----------------------------
+DATA: lt_arquivo   TYPE STANDARD TABLE OF string,
+      lv_linha     TYPE string,
+      lv_data      TYPE sy-datum,
+      lv_hora      TYPE sy-uzeit.
+
+DATA: lv_processados TYPE i VALUE 0,
+      lv_inseridos   TYPE i VALUE 0,
+      lv_ignorados   TYPE i VALUE 0.
+
+TYPES: BEGIN OF ty_saida,
+         vbeln  TYPE zt07_ped_cabec-vbeln,
+         posnr  TYPE zt07_ped_item-posnr,
+         matnr  TYPE zt07_ped_item-matnr,
+         maktx  TYPE zt07_ped_item-maktx,
+         fkimg  TYPE zt07_ped_item-fkimg,
+         netwr  TYPE zt07_ped_item-netwr,
+         meins  TYPE zt07_ped_item-meins,
+         waers  TYPE zt07_ped_item-waers,
+       END OF ty_saida.
+
+DATA: wa_saida TYPE ty_saida,
+      it_saida TYPE STANDARD TABLE OF ty_saida.
+
+"----------------------------
+" PROGRAMA PRINCIPAL
+"----------------------------
+START-OF-SELECTION.
+
+  lv_data = sy-datum.
+  lv_hora = sy-uzeit.
+
+  " Upload do arquivo
+  CALL METHOD cl_gui_frontend_services=>gui_upload
+    EXPORTING
+      filename = p_file
+      filetype = 'ASC'
+    CHANGING
+      data_tab = lt_arquivo
+    EXCEPTIONS
+      others = 1.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'Erro ao ler o arquivo.' TYPE 'E'.
+  ENDIF.
+
+  LOOP AT lt_arquivo INTO lv_linha.
+
+    DATA: lv_vbeln  TYPE zt07_ped_cabec-vbeln,
+          lv_erdat  TYPE zt07_ped_cabec-erdat,
+          lv_ernam  TYPE zt07_ped_cabec-ernam,
+          lv_posnr  TYPE zt07_ped_item-posnr,
+          lv_matnr  TYPE zt07_ped_item-matnr,
+          lv_maktx  TYPE zt07_ped_item-maktx,
+          lv_fkimg  TYPE zt07_ped_item-fkimg,
+          lv_netwr  TYPE zt07_ped_item-netwr,
+          lv_meins  TYPE zt07_ped_item-meins,
+          lv_waers  TYPE zt07_ped_item-waers.
+
+    lv_processados += 1.
+
+    SPLIT lv_linha AT ';' INTO
+      lv_vbeln lv_erdat lv_ernam lv_posnr lv_matnr lv_maktx
+      lv_fkimg lv_netwr lv_meins lv_waers.
+
+    " Insere CABEC se necessário
+    SELECT SINGLE vbeln FROM zt07_ped_cabec WHERE vbeln = lv_vbeln.
+    IF sy-subrc <> 0.
+      INSERT zt07_ped_cabec VALUES VALUE #(
+        vbeln = lv_vbeln
+        erdat = lv_erdat
+        ernam = lv_ernam
+        data_carga = lv_data
+        hora_carga = lv_hora ).
+    ENDIF.
+
+    " Verifica duplicidade de item
+    SELECT SINGLE vbeln FROM zt07_ped_item WHERE vbeln = lv_vbeln AND posnr = lv_posnr.
+    IF sy-subrc = 0.
+      lv_ignorados += 1.
+      CONTINUE.
+    ENDIF.
+
+    " Insere ITEM
+    INSERT zt07_ped_item VALUES VALUE #(
+      vbeln = lv_vbeln
+      posnr = lv_posnr
+      matnr = lv_matnr
+      maktx = lv_maktx
+      fkimg = lv_fkimg
+      netwr = lv_netwr
+      meins = lv_meins
+      waers = lv_waers
+      data_carga = lv_data
+      hora_carga = lv_hora ).
+
+    " Insere CARGA
+    INSERT zt07_ped_carga VALUES VALUE #(
+      vbeln = lv_vbeln
+      posnr = lv_posnr
+      matnr = lv_matnr
+      fkimg = lv_fkimg
+      netwr = lv_netwr
+      meins = lv_meins
+      waers = lv_waers
+      erdat = lv_erdat
+      ernam = lv_ernam
+      data_carga = lv_data ).
+
+    " Prepara para o ALV
+    wa_saida-vbeln = lv_vbeln.
+    wa_saida-posnr = lv_posnr.
+    wa_saida-matnr = lv_matnr.
+    wa_saida-maktx = lv_maktx.
+    wa_saida-fkimg = lv_fkimg.
+    wa_saida-netwr = lv_netwr.
+    wa_saida-meins = lv_meins.
+    wa_saida-waers = lv_waers.
+    APPEND wa_saida TO it_saida.
+
+    lv_inseridos += 1.
+
+  ENDLOOP.
+
+  COMMIT WORK.
+
+  "----------------------------
+  " RESUMO FINAL COM WRITE
+  "----------------------------
+  WRITE: / 'Resumo da Execução:',
+         / '--------------------',
+         / 'Registros processados:', lv_processados,
+         / 'Registros inseridos:  ', lv_inseridos,
+         / 'Registros ignorados:  ', lv_ignorados,
+         / ' '.
+
+  "----------------------------
+  " EXIBIÇÃO NO ALV
+  "----------------------------
+  DATA: it_fieldcat TYPE slis_t_fieldcat_alv,
+        wa_fieldcat TYPE slis_fieldcat_alv.
+
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'VBELN'. wa_fieldcat-seltext_l = 'Código do Documento'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'POSNR'. wa_fieldcat-seltext_l = 'Item do Pedido'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'MATNR'. wa_fieldcat-seltext_l = 'Código do Material'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'MAKTX'. wa_fieldcat-seltext_l = 'Descrição do Produto'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'FKIMG'. wa_fieldcat-seltext_l = 'Quantidade'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'NETWR'. wa_fieldcat-seltext_l = 'Valor Total'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'MEINS'. wa_fieldcat-seltext_l = 'Unidade'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'WAERS'. wa_fieldcat-seltext_l = 'Moeda'. APPEND wa_fieldcat TO it_fieldcat.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      it_fieldcat = it_fieldcat
+    TABLES
+      t_outtab    = it_saida
+    EXCEPTIONS
+      others      = 1.
+
+
+
+
