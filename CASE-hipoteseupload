@@ -1,0 +1,167 @@
+O programa ZCARGA_DEC realiza a leitura de um arquivo .txt contendo dados de pedidos 
+e carrega automaticamente as informações nas tabelas Z criadas (ZT07_DEC_CABEC, ZT07_DEC_ITEM e ZT07_DEC_CARGA).
+Cada linha do arquivo representa um item de pedido com os dados separados por ponto e vírgula.
+O programa evita duplicidade de cabeçalhos e preenche os campos de data e hora de carga automaticamente com base no sistema.
+
+
+
+REPORT zcarga_dec_alv.
+
+TABLES: zt07_dec_item.
+
+* Parâmetro para selecionar o arquivo
+PARAMETERS: p_file TYPE rlgrap-filename OBLIGATORY.
+
+* Tipos e tabelas internas para leitura e processamento
+DATA: lt_arquivo   TYPE TABLE OF string,
+      lv_linha     TYPE string,
+      lt_campos    TYPE STANDARD TABLE OF string.
+
+* Tipo para exibição ALV
+TYPES: BEGIN OF ty_preview,
+         vbeln  TYPE vbeln_va,
+         posnr  TYPE posnr_va,
+         matnr  TYPE matnr,
+         maktx  TYPE maktx,
+         fkimg  TYPE fkimg,
+         netwr  TYPE netwr,
+         erdat  TYPE erdat,
+         ernam  TYPE ernam,
+       END OF ty_preview.
+
+DATA: lt_preview TYPE STANDARD TABLE OF ty_preview,
+      ls_preview TYPE ty_preview.
+
+* Dados de carga nas tabelas Z
+DATA: ls_cabec  TYPE zt07_dec_cabec,
+      ls_item   TYPE zt07_dec_item,
+      ls_carga  TYPE zt07_dec_carga.
+
+DATA: lt_cabecidos TYPE SORTED TABLE OF vbeln_va WITH UNIQUE KEY table_line.
+
+*-------------------------------------------------------------------
+* Upload do arquivo
+*-------------------------------------------------------------------
+CALL FUNCTION 'GUI_UPLOAD'
+  EXPORTING
+    filename   = p_file
+    filetype   = 'ASC'
+  TABLES
+    data_tab   = lt_arquivo
+  EXCEPTIONS
+    others     = 1.
+
+IF sy-subrc <> 0.
+  MESSAGE 'Erro ao carregar arquivo' TYPE 'E'.
+ENDIF.
+
+*-------------------------------------------------------------------
+* Leitura das linhas e preenchimento da estrutura para ALV
+*-------------------------------------------------------------------
+LOOP AT lt_arquivo INTO lv_linha.
+  SPLIT lv_linha AT ';' INTO TABLE lt_campos.
+
+  READ TABLE lt_campos INDEX 1 INTO ls_preview-vbeln.
+  READ TABLE lt_campos INDEX 2 INTO ls_preview-posnr.
+  READ TABLE lt_campos INDEX 3 INTO ls_preview-matnr.
+  READ TABLE lt_campos INDEX 4 INTO ls_preview-maktx.
+  READ TABLE lt_campos INDEX 5 INTO ls_preview-fkimg.
+  READ TABLE lt_campos INDEX 6 INTO ls_preview-netwr.
+  READ TABLE lt_campos INDEX 7 INTO ls_preview-erdat.
+  READ TABLE lt_campos INDEX 8 INTO ls_preview-ernam.
+
+  APPEND ls_preview TO lt_preview.
+ENDLOOP.
+
+*-------------------------------------------------------------------
+* Exibição ALV para conferência
+*-------------------------------------------------------------------
+DATA: lt_fieldcat TYPE slis_t_fieldcat_alv,
+      ls_fieldcat TYPE slis_fieldcat_alv.
+
+DEFINE add_field.
+  CLEAR ls_fieldcat.
+  ls_fieldcat-fieldname = &1.
+  ls_fieldcat-seltext_m = &2.
+  APPEND ls_fieldcat TO lt_fieldcat.
+END-OF-DEFINITION.
+
+add_field 'VBELN'  'Pedido'.
+add_field 'POSNR'  'Item'.
+add_field 'MATNR'  'Material'.
+add_field 'MAKTX'  'Descrição'.
+add_field 'FKIMG'  'Quantidade'.
+add_field 'NETWR'  'Valor'.
+add_field 'ERDAT'  'Data Doc.'.
+add_field 'ERNAM'  'Criador'.
+
+CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+  EXPORTING
+    i_callback_program = sy-repid
+    i_structure_name   = ''
+    it_fieldcat        = lt_fieldcat
+  TABLES
+    t_outtab           = lt_preview
+  EXCEPTIONS
+    others             = 1.
+
+*-------------------------------------------------------------------
+* Confirmação do usuário para continuar
+*-------------------------------------------------------------------
+DATA: lv_resposta TYPE c LENGTH 1.
+
+CALL FUNCTION 'POPUP_TO_CONFIRM'
+  EXPORTING
+    titlebar              = 'Confirmação de Carga'
+    text_question         = 'Deseja realmente inserir os dados nas tabelas Z?'
+    text_button_1         = 'Sim'
+    text_button_2         = 'Não'
+    default_button        = '2'
+    display_cancel_button = 'X'
+  IMPORTING
+    answer                = lv_resposta.
+
+IF lv_resposta <> '1'.
+  MESSAGE 'Carga cancelada pelo usuário.' TYPE 'I'.
+  EXIT.
+ENDIF.
+
+*-------------------------------------------------------------------
+* Inserção dos dados nas tabelas Z
+*-------------------------------------------------------------------
+LOOP AT lt_preview INTO ls_preview.
+
+  " CABEÇALHO
+  IF ls_preview-vbeln NOT IN lt_cabecidos.
+    ls_cabec-vbeln       = ls_preview-vbeln.
+    ls_cabec-erdat       = ls_preview-erdat.
+    ls_cabec-ernam       = ls_preview-ernam.
+    ls_cabec-data_carga  = sy-datum.
+    ls_cabec-hora_carga  = sy-uzeit.
+    INSERT zt07_dec_cabec FROM ls_cabec.
+    APPEND ls_preview-vbeln TO lt_cabecidos.
+  ENDIF.
+
+  " ITEM
+  CLEAR ls_item.
+  ls_item-vbeln       = ls_preview-vbeln.
+  ls_item-posnr       = ls_preview-posnr.
+  ls_item-matnr       = ls_preview-matnr.
+  ls_item-maktx       = ls_preview-maktx.
+  ls_item-fkimg       = ls_preview-fkimg.
+  ls_item-netwr       = ls_preview-netwr.
+  ls_item-data_carga  = sy-datum.
+  ls_item-hora_carga  = sy-uzeit.
+  INSERT zt07_dec_item FROM ls_item.
+
+  " CARGA
+  CLEAR ls_carga.
+  MOVE-CORRESPONDING ls_item TO ls_carga.
+  ls_carga-erdat = ls_preview-erdat.
+  ls_carga-ernam = ls_preview-ernam.
+  INSERT zt07_dec_carga FROM ls_carga.
+
+ENDLOOP.
+
+COMMIT WORK.
+MESSAGE 'Carga finalizada com sucesso!' TYPE 'S'.
