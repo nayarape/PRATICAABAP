@@ -1,0 +1,166 @@
+Desafio ABAP – Análise de Pedidos com Validação e ALV
+🎯 Objetivo
+Desenvolver um relatório ABAP do tipo ALV para analisar pedidos de venda registrados nas tabelas Z (ZGNN_PED_CABEC, ZGNN_PED_ITEM e ZGNN_PED_CARGA), realizando validações de consistência nos dados e exibindo os resultados de forma clara e filtrável.
+
+🔧 O que o programa faz?
+Permite ao usuário filtrar pedidos por:
+Data do pedido (obrigatório)
+Cliente (opcional)
+Status (ex: A, P, F)
+Material (opcional)
+Checkbox para mostrar apenas pedidos com problema
+Realiza um processamento cruzado entre CABEC, ITEM e CARGA para:
+Calcular quantidade total de itens por pedido
+Calcular o valor total de cada pedido (quantidade × preço unitário)
+Identificar pedidos com problemas, como:
+Itens sem material ou com quantidade inválida (≤ 0)
+Pedidos sem itens
+Carga com peso ou volume zerado
+Exibe os dados finais em um relatório ALV, com as colunas:
+Número do Pedido
+Cliente
+Data do Pedido
+Status
+Quantidade Total de Itens
+Valor Total
+Indicador de Problema (X ou vazio)
+
+
+
+REPORT zrnn_pedidos_alv.
+
+TABLES: zgNN_ped_cabec, zgNN_ped_item, zgNN_ped_carga.
+
+* Tipos e estruturas
+TYPES: BEGIN OF ty_saida,
+         num_pedido    TYPE zgNN_ped_cabec-num_pedido,
+         cod_cliente   TYPE zgNN_ped_cabec-cod_cliente,
+         data_pedido   TYPE zgNN_ped_cabec-data_pedido,
+         status        TYPE zgNN_ped_cabec-status,
+         qtd_itens     TYPE i,
+         valor_total   TYPE p DECIMALS 2,
+         tem_problema  TYPE char1,
+       END OF ty_saida.
+
+* Tabelas internas e work areas
+DATA: it_cabec     TYPE STANDARD TABLE OF zgNN_ped_cabec,
+      it_itens     TYPE STANDARD TABLE OF zgNN_ped_item,
+      it_carga     TYPE STANDARD TABLE OF zgNN_ped_carga,
+      it_saida     TYPE STANDARD TABLE OF ty_saida,
+      wa_saida     TYPE ty_saida,
+      wa_cabec     TYPE zgNN_ped_cabec,
+      wa_item      TYPE zgNN_ped_item,
+      wa_carga     TYPE zgNN_ped_carga.
+
+* Variáveis de controle
+DATA: qtd_total     TYPE i,
+      valor_total   TYPE p DECIMALS 2,
+      problema      TYPE char1,
+      item_achado   TYPE c.
+
+* Tela de seleção
+SELECT-OPTIONS: s_data    FOR zgNN_ped_cabec-data_pedido OBLIGATORY,
+                s_cliente FOR zgNN_ped_cabec-cod_cliente,
+                s_mat     FOR zgNN_ped_item-cod_item.
+
+PARAMETERS: p_status TYPE zgNN_ped_cabec-status,
+            p_prob   TYPE c AS CHECKBOX.
+
+* Lógica principal
+START-OF-SELECTION.
+
+  " Buscar pedidos
+  SELECT * INTO TABLE it_cabec FROM zgNN_ped_cabec
+    WHERE data_pedido IN s_data
+      AND cod_cliente IN s_cliente
+      AND status = p_status.
+
+  IF it_cabec IS INITIAL.
+    MESSAGE 'Nenhum pedido encontrado.' TYPE 'I'.
+    EXIT.
+  ENDIF.
+
+  " Buscar itens e carga com FOR ALL ENTRIES
+  SELECT * INTO TABLE it_itens FROM zgNN_ped_item
+    FOR ALL ENTRIES IN it_cabec
+    WHERE num_pedido = it_cabec-num_pedido
+      AND cod_item IN s_mat.
+
+  SELECT * INTO TABLE it_carga FROM zgNN_ped_carga
+    FOR ALL ENTRIES IN it_cabec
+    WHERE num_pedido = it_cabec-num_pedido.
+
+  SORT: it_itens BY num_pedido,
+        it_carga BY num_pedido.
+
+  " Processar pedidos
+  LOOP AT it_cabec INTO wa_cabec.
+
+    CLEAR: wa_saida, qtd_total, valor_total, problema, item_achado.
+
+    wa_saida-num_pedido  = wa_cabec-num_pedido.
+    wa_saida-cod_cliente = wa_cabec-cod_cliente.
+    wa_saida-data_pedido = wa_cabec-data_pedido.
+    wa_saida-status      = wa_cabec-status.
+
+    " Verificar itens do pedido
+    LOOP AT it_itens INTO wa_item WHERE num_pedido = wa_cabec-num_pedido.
+
+      item_achado = 'X'.
+
+      IF wa_item-cod_item IS INITIAL OR wa_item-qtd_item <= 0.
+        problema = 'X'.
+      ENDIF.
+
+      qtd_total += wa_item-qtd_item.
+      valor_total += wa_item-qtd_item * wa_item-preco_unit.
+    ENDLOOP.
+
+    IF item_achado IS INITIAL.
+      problema = 'X'.
+    ENDIF.
+
+    " Verificar carga
+    READ TABLE it_carga INTO wa_carga
+      WITH KEY num_pedido = wa_cabec-num_pedido
+      BINARY SEARCH.
+
+    IF sy-subrc = 0 AND ( wa_carga-peso <= 0 OR wa_carga-volume <= 0 ).
+      problema = 'X'.
+    ENDIF.
+
+    " Preencher saída
+    wa_saida-qtd_itens     = qtd_total.
+    wa_saida-valor_total   = valor_total.
+    wa_saida-tem_problema  = problema.
+
+    IF p_prob = 'X' AND problema = 'X'.
+      APPEND wa_saida TO it_saida.
+    ELSEIF p_prob IS INITIAL.
+      APPEND wa_saida TO it_saida.
+    ENDIF.
+
+  ENDLOOP.
+
+  IF it_saida IS INITIAL.
+    MESSAGE 'Nenhum resultado encontrado após o filtro.' TYPE 'I'.
+    EXIT.
+  ENDIF.
+
+  " Exibir resultado no ALV
+  PERFORM exibir_alv.
+
+*---------------------------------------------------------------------*
+*       FORM exibir_alv                                               *
+*---------------------------------------------------------------------*
+FORM exibir_alv.
+  DATA: lt_fieldcat TYPE lvc_t_fcat.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = sy-repid
+      it_fieldcat        = lt_fieldcat
+    TABLES
+      t_outtab           = it_saida.
+ENDFORM.
+
