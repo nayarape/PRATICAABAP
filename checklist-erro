@@ -200,3 +200,9 @@ BREAK-POINT.
 Logo após o upload ou validação, e roda o programa no modo debug. Isso ajuda demais!
 
 
+📌 Só vai depender de 3 coisinhas na hora de testar:
+Que o arquivo .txt esteja formatado certinho (6 colunas separadas por ;, sem linhas vazias)
+
+Que os códigos de pedido, item e material realmente existam no sistema (ou estejam no sistema de testes)
+
+Que a tabela ZT07_PED_CARGA esteja criada e ativada certinha, com os campos exigidos no case
