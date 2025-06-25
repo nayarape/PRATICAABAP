@@ -1,0 +1,206 @@
+🧠 Desafio Técnico – Relatório e Manutenção de Pedidos
+Contexto:
+Você recebeu a missão de desenvolver um programa ABAP que ofereça funcionalidades completas de manutenção e consulta de pedidos de venda,
+com base em três tabelas customizadas previamente criadas:
+ZT07_PED_CABEC – Cabeçalho do pedido
+ZT07_PED_ITEM – Itens associados ao pedido
+ZT07_PED_CARGA – Informações logísticas vinculadas aos itens
+📋 Requisitos do desafio:
+Crie um programa do tipo REPORT que atenda aos seguintes critérios:
+Tela de seleção interativa com dois blocos:
+Um grupo de RADIOBUTTONS que permita ao usuário escolher a ação a ser executada:
+Inserir pedido
+Atualizar dados
+Excluir pedido
+Consultar pedidos
+Outro grupo de RADIOBUTTONS que permita selecionar o modo de exibição dos dados:
+ALV com REUSE_ALV_GRID_DISPLAY
+Exibição simples com cl_demo_output=>display
+Filtros adicionais de consulta, incluindo:
+Código do pedido (VBELN)
+Faixa de datas de criação (ERDAT)
+Nome do usuário criador (ERNAM)
+Lógica de negócios completa, contendo:
+Inserção de um novo pedido com dados padrão
+Atualização de dados do pedido identificado por VBELN
+Exclusão direta de registros
+Consulta consolidada entre as três tabelas usando FOR ALL ENTRIES
+Exibição de relatório estruturado com FIELD CATALOG
+Regras técnicas obrigatórias:
+Aplicação de READ TABLE ... BINARY SEARCH após SORT
+Controle transacional com COMMIT WORK AND WAIT seguido de ROLLBACK WORK (simulado)
+Uso de mensagens com tipos I, S e E referenciadas via SE91
+
+
+
+
+REPORT znn_gestao_pedidos MESSAGE-ID zmnn_case.
+
+"-----------------------------
+" TYPES E VARIÁVEIS GLOBAIS
+"-----------------------------
+TYPES: BEGIN OF ty_relatorio,
+         vbeln      TYPE zt07_ped_cabec-vbeln,
+         erdat      TYPE zt07_ped_cabec-erdat,
+         ernam      TYPE zt07_ped_cabec-ernam,
+         posnr      TYPE zt07_ped_item-posnr,
+         matnr      TYPE zt07_ped_item-matnr,
+         maktx      TYPE zt07_ped_item-maktx,
+         fkimg      TYPE zt07_ped_item-fkimg,
+         netwr      TYPE zt07_ped_item-netwr,
+         meins      TYPE zt07_ped_item-meins,
+         waers      TYPE zt07_ped_item-waers,
+         carga_data TYPE zt07_ped_carga-data_carga,
+       END OF ty_relatorio.
+
+DATA: wa_relatorio TYPE ty_relatorio,
+      it_relatorio TYPE STANDARD TABLE OF ty_relatorio,
+      it_cabec     TYPE STANDARD TABLE OF zt07_ped_cabec,
+      it_item      TYPE STANDARD TABLE OF zt07_ped_item,
+      it_carga     TYPE STANDARD TABLE OF zt07_ped_carga.
+
+"-----------------------------
+" SELECTION-SCREEN
+"-----------------------------
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+PARAMETERS: r_ins RADIOBUTTON GROUP g1 DEFAULT 'X',
+            r_upd RADIOBUTTON GROUP g1,
+            r_del RADIOBUTTON GROUP g1,
+            r_con RADIOBUTTON GROUP g1.
+PARAMETERS: r_alv RADIOBUTTON GROUP g2 DEFAULT 'X',
+            r_demo RADIOBUTTON GROUP g2.
+PARAMETERS: p_vbeln TYPE zt07_ped_cabec-vbeln.
+SELECT-OPTIONS: s_erdat FOR zt07_ped_cabec-erdat,
+                s_ernam FOR zt07_ped_cabec-ernam.
+SELECTION-SCREEN END OF BLOCK b1.
+TEXT-001 = 'Operação desejada e forma de exibição'.
+
+"-----------------------------
+" START-OF-SELECTION
+"-----------------------------
+START-OF-SELECTION.
+
+  IF r_ins = 'X'.
+    PERFORM f_inserir_pedidos.
+  ELSEIF r_upd = 'X'.
+    PERFORM f_atualizar_pedidos.
+  ELSEIF r_del = 'X'.
+    PERFORM f_excluir_pedidos.
+  ELSEIF r_con = 'X'.
+    PERFORM f_consultar_pedidos.
+  ENDIF.
+
+"-----------------------------
+" FORMs
+"-----------------------------
+FORM f_inserir_pedidos.
+  DATA wa_cabec TYPE zt07_ped_cabec.
+  wa_cabec-vbeln = 'P1000'.
+  wa_cabec-erdat = sy-datum.
+  wa_cabec-ernam = sy-uname.
+  wa_cabec-data_carga = sy-datum.
+  wa_cabec-hora_carga = sy-uzeit.
+  INSERT zt07_ped_cabec FROM wa_cabec.
+  COMMIT WORK AND WAIT.
+  ROLLBACK WORK.
+  MESSAGE i001(zmnn_case) WITH 'Pedido inserido com sucesso'.
+ENDFORM.
+
+FORM f_atualizar_pedidos.
+  SORT zt07_ped_cabec BY vbeln.
+  READ TABLE zt07_ped_cabec INTO DATA(wa_cabec)
+       WITH KEY vbeln = p_vbeln BINARY SEARCH.
+  IF sy-subrc = 0.
+    wa_cabec-ernam = 'USUARIO'.
+    MODIFY zt07_ped_cabec FROM wa_cabec.
+    COMMIT WORK AND WAIT.
+    ROLLBACK WORK.
+    MESSAGE i002(zmnn_case) WITH 'Pedido atualizado com sucesso'.
+  ELSE.
+    MESSAGE e003(zmnn_case) WITH 'Pedido não encontrado para atualização'.
+  ENDIF.
+ENDFORM.
+
+FORM f_excluir_pedidos.
+  DELETE FROM zt07_ped_cabec WHERE vbeln = p_vbeln.
+  COMMIT WORK AND WAIT.
+  ROLLBACK WORK.
+  MESSAGE s004(zmnn_case) WITH 'Pedido excluído (se existia)'.
+ENDFORM.
+
+FORM f_consultar_pedidos.
+  SELECT * FROM zt07_ped_cabec
+    INTO TABLE it_cabec
+    WHERE ( vbeln = @p_vbeln OR @p_vbeln IS INITIAL )
+      AND erdat IN @s_erdat
+      AND ernam IN @s_ernam.
+
+  IF sy-subrc <> 0.
+    MESSAGE i005(zmnn_case) WITH 'Nenhum pedido encontrado'.
+    RETURN.
+  ENDIF.
+
+  SELECT * FROM zt07_ped_item INTO TABLE it_item
+    FOR ALL ENTRIES IN it_cabec WHERE vbeln = it_cabec-vbeln.
+
+  SELECT * FROM zt07_ped_carga INTO TABLE it_carga
+    FOR ALL ENTRIES IN it_cabec WHERE vbeln = it_cabec-vbeln.
+
+  LOOP AT it_item INTO DATA(wa_item).
+    SORT it_cabec BY vbeln.
+    SORT it_carga BY vbeln posnr.
+    READ TABLE it_cabec INTO DATA(wa_cabec)
+         WITH KEY vbeln = wa_item-vbeln BINARY SEARCH.
+    READ TABLE it_carga INTO DATA(wa_carga)
+         WITH KEY vbeln = wa_item-vbeln posnr = wa_item-posnr BINARY SEARCH.
+
+    wa_relatorio-vbeln      = wa_item-vbeln.
+    wa_relatorio-erdat      = wa_cabec-erdat.
+    wa_relatorio-ernam      = wa_cabec-ernam.
+    wa_relatorio-posnr      = wa_item-posnr.
+    wa_relatorio-matnr      = wa_item-matnr.
+    wa_relatorio-maktx      = wa_item-maktx.
+    wa_relatorio-fkimg      = wa_item-fkimg.
+    wa_relatorio-netwr      = wa_item-netwr.
+    wa_relatorio-meins      = wa_item-meins.
+    wa_relatorio-waers      = wa_item-waers.
+    wa_relatorio-carga_data = wa_carga-data_carga.
+
+    APPEND wa_relatorio TO it_relatorio.
+  ENDLOOP.
+
+  IF r_alv = 'X'.
+    PERFORM f_exibir_alv.
+  ELSE.
+    PERFORM f_exibir_simples.
+  ENDIF.
+ENDFORM.
+
+FORM f_exibir_alv.
+  DATA: it_fieldcat TYPE slis_t_fieldcat_alv,
+        wa_fieldcat TYPE slis_fieldcat_alv.
+
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'VBELN'. wa_fieldcat-seltext_l = 'Pedido'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'ERDAT'. wa_fieldcat-seltext_l = 'Data Criação'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'ERNAM'. wa_fieldcat-seltext_l = 'Usuário'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'POSNR'. wa_fieldcat-seltext_l = 'Item'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'MATNR'. wa_fieldcat-seltext_l = 'Material'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'MAKTX'. wa_fieldcat-seltext_l = 'Descrição'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'FKIMG'. wa_fieldcat-seltext_l = 'Qtd'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'NETWR'. wa_fieldcat-seltext_l = 'Valor'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'MEINS'. wa_fieldcat-seltext_l = 'Unid.'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'WAERS'. wa_fieldcat-seltext_l = 'Moeda'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'CARGA_DATA'. wa_fieldcat-seltext_l = 'Data Carga'. APPEND wa_fieldcat TO it_fieldcat.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      it_fieldcat = it_fieldcat
+    TABLES
+      t_outtab    = it_relatorio.
+ENDFORM.
+
+FORM f_exibir_simples.
+  cl_demo_output=>display( it_relatorio ).
+ENDFORM.
+
+
