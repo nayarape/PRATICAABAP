@@ -190,7 +190,7 @@ START-OF-SELECTION.
   DATA: it_fieldcat TYPE slis_t_fieldcat_alv,
         wa_fieldcat TYPE slis_fieldcat_alv.
 
-  CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'VBELN'. wa_fieldcat-seltext_l = 'Código do Documento'. APPEND wa_fieldcat TO it_fieldcat.
+  CLEAR wa_fieldcat.wa_fieldcat-fieldname = 'VBELN'. wa_fieldcat-seltext_l = 'Código do Documento'. APPEND wa_fieldcat TO it_fieldcat.
   CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'POSNR'. wa_fieldcat-seltext_l = 'Item do Pedido'. APPEND wa_fieldcat TO it_fieldcat.
   CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'MATNR'. wa_fieldcat-seltext_l = 'Código do Material'. APPEND wa_fieldcat TO it_fieldcat.
   CLEAR wa_fieldcat. wa_fieldcat-fieldname = 'MAKTX'. wa_fieldcat-seltext_l = 'Descrição do Produto'. APPEND wa_fieldcat TO it_fieldcat.
