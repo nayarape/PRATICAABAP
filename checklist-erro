@@ -1,0 +1,202 @@
+
+# ✅ **Checklist de Entrega e Ativação de Programas ABAP**
+
+---
+
+## 🧱 **1. Estrutura dos Includes**
+
+☐ `INCLUDE_TOP` criado e ativado
+☐ `INCLUDE_SEL` criado e ativado
+☐ `INCLUDE_F01` criado e ativado
+☐ Ordem correta no `REPORT`:
+
+```abap
+INCLUDE ZPROG_TOP.
+INCLUDE ZPROG_SEL.
+INCLUDE ZPROG_F01.
+```
+
+---
+
+## 📦 **2. Tabela Z**
+
+☐ Tabela criada no `SE11` com os nomes e tipos certos
+☐ Campos obrigatórios da atividade (ex: `VBELN`, `POSNR`, `DATA_CARGA`, etc) incluídos
+☐ Tabela ativada com sucesso (sem erros de chave primária)
+☐ SM30 criada (se exigido no enunciado da etapa 1)
+
+---
+
+## 🧪 **3. Upload e Validação**
+
+☐ Parâmetro de upload (`p_file`) declarado e funcionando
+☐ `GUI_UPLOAD` está lendo o arquivo corretamente
+☐ Validação com `EKKO`, `EKPO`, `MARA` está com `SELECT SINGLE ... WHERE ... = @variavel`
+☐ `CONTINUE` usado pra pular registros inválidos
+☐ (Opcional) Criou log de erros? ✍️
+
+---
+
+## 💾 **4. Inserção dos Dados**
+
+☐ `INSERT` usando `wa_carga` com tipo da tabela Z
+☐ Busca complementar de `MEINS` e `WAERS` feita na `EKPO`
+☐ `COMMIT WORK AND WAIT` após `INSERT` (ou depois de todos)
+☐ `sy-subrc` validado para controlar erro
+
+---
+
+## 📊 **5. Relatório ALV**
+
+☐ Usando `CL_SALV_TABLE` (novo modelo)
+☐ ALV montado com `factory(...)` e `display()`
+☐ A tabela passada no `t_table =` é compatível com a exibição
+☐ `SELECT * FROM ZTABELA INTO TABLE lt_saida` usado se simplificado
+☐ Nenhum campo do ALV está vazio ou com erro de tipo
+
+---
+
+## 🚀 **6. Ativação final**
+
+☐ Includes ativados (`Ctrl + F3`)
+☐ Programa principal ativado (`Ctrl + F3`)
+☐ Rodou `Ctrl + F2` (check) antes de ativar
+☐ Nenhum erro de campo desconhecido, tabela inexistente ou conflito de nome
+☐ Fez um teste real com arquivo `.txt` e registros válidos
+
+---
+
+### 🌟 DICA EXTRA:
+
+Se quiser revisar os dados gravados direto da base, pode usar a transação:
+
+```
+SE16N → zt07_ped_carga
+```
+Nayaraaa, você tá cada vez mais afiada! 🔥
+Esses erros de **leitura de arquivo, colunas faltando ou ALV vazio** são os mais comuns — e frustrantes — quando a gente tá testando. Mas vou te explicar **cada um dos motivos possíveis** e como corrigir **rapidamente**, sem sofrimento.
+
+---
+
+## 💥 **1. Programa não lê o arquivo `.txt`**
+
+### ⚠️ Sinais:
+
+* Nada aparece no ALV
+* Aparece a mensagem de erro `'Erro no upload do arquivo.'`
+* Ou você fica com `lt_raw` vazio
+
+### 🧠 Causas prováveis:
+
+#### a) Caminho do arquivo errado
+
+* O campo `p_file` precisa conter o **caminho completo** do arquivo, tipo:
+
+  ```
+  C:\Users\Nayara\Downloads\pedido.txt
+  ```
+
+#### b) Arquivo está aberto em outro programa (ex: Excel)
+
+* Se o `.txt` estiver aberto, o `GUI_UPLOAD` **não consegue ler**. Fecha antes de executar!
+
+#### c) Arquivo não tem permissão de leitura
+
+* Às vezes o arquivo está em uma pasta com restrição (tipo `C:\Program Files`). Copia pra uma pasta comum como `Downloads` ou `Documentos`.
+
+#### d) Erro silencioso no `GUI_UPLOAD`
+
+* Verifica se `sy-subrc` está diferente de zero logo após o `CALL FUNCTION 'GUI_UPLOAD'`.
+
+✅ **Como resolver**:
+
+* Garante que o caminho esteja certo e sem espaços malucos
+* Fecha o arquivo antes de executar
+* Usa `F4` pra navegar até o arquivo e evitar erro de digitação
+
+---
+
+## 🧩 **2. Coluna faltando ou valores desalinhados**
+
+### ⚠️ Sinais:
+
+* Campos vazios ou com erro no `SPLIT`
+* Aparece mensagem tipo "incompatible MOVE"
+* `APPEND` não funciona ou grava lixo
+
+### 🧠 Causas prováveis:
+
+#### a) Arquivo `.txt` não está separado por `;` (ponto e vírgula)
+
+* O `SPLIT` está esperando 6 colunas separadas por `;`, como:
+
+  ```
+  4500000032;10;158;1;10.00;20250101
+  ```
+
+#### b) Alguma linha está com menos ou mais colunas
+
+* Exemplo:
+
+  ```
+  4500000032;10;158;1;10.00       ← faltou a data
+  ```
+
+#### c) Linha em branco no final do arquivo
+
+* Essa linha entra como `lv_line = ''` e dá erro no `SPLIT`.
+
+✅ **Como resolver**:
+
+* Abre o `.txt` com o Bloco de Notas
+* Confirma que **cada linha tem exatamente 6 colunas**
+* Evita deixar linhas em branco no final
+
+💡 Dica: testa imprimindo `lv_line` com `WRITE:` ou com `BREAK-POINT` pra ver se os dados estão vindo certinhos.
+
+---
+
+## 📊 **3. Tabela do ALV aparece vazia**
+
+### ⚠️ Sinais:
+
+* O programa roda, mas a grid do ALV fica sem registros
+
+### 🧠 Causas prováveis:
+
+#### a) Nenhum dado passou na validação
+
+* Pode ser que nenhum `SELECT` na `EKKO`, `EKPO`, `MARA` retornou `sy-subrc = 0`.
+
+#### b) `INSERT` não foi feito corretamente
+
+* Talvez a `wa_carga` não foi preenchida direito, ou o `INSERT` falhou e fez `ROLLBACK`.
+
+#### c) O `SELECT * FROM ZTABELA INTO lt_saida` está pegando tabela vazia
+
+* Isso acontece se o `INSERT` não gravou nada mesmo.
+
+✅ **Como resolver**:
+
+* Coloca um `BREAK-POINT` dentro do `LOOP AT it_final` pra ver se está populando
+* Coloca um `BREAK-POINT` antes do `INSERT` pra ver os dados na `wa_carga`
+* Roda o programa e depois confere direto na `SE16N` se a `zt07_ped_carga` tem registros
+
+---
+
+## 🛠️ Dica bônus: usar `WRITE:` ou `BREAK-POINT`
+
+```abap
+WRITE: / 'Linha lida:', lv_line.
+WRITE: / 'Pedido:', wa_entrada-ebeln, 'Item:', wa_entrada-ebelp.
+```
+
+Ou coloca:
+
+```abap
+BREAK-POINT.
+```
+
+Logo após o upload ou validação, e roda o programa no modo debug. Isso ajuda demais!
+
+
