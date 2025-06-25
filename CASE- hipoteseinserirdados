@@ -1,0 +1,151 @@
+
+### 📄 **Enunciado - Programa de Inserção e Visualização de Pedidos (ZT07)**
+
+**Cenário:**
+Você foi designada para implementar um programa ABAP que complemente o design técnico construído na primeira etapa do case,
+que envolvia a criação de três tabelas customizadas no sistema:
+* `ZT07_PED_CABEC` – Tabela de cabeçalho de pedidos
+* `ZT07_PED_ITEM` – Tabela de itens do pedido
+* `ZT07_PED_CARGA` – Tabela com dados de carga vinculados aos itens
+**Objetivo:**
+Desenvolver um programa funcional que permita:
+1. **Inserção manual de dados** nessas três tabelas por meio de uma tela de seleção organizada em blocos;
+2. **Validação obrigatória** de campos essenciais antes da gravação;
+3. **Gravação encadeada** dos dados nas tabelas `ZT07_PED_CABEC`, `ZT07_PED_ITEM` e `ZT07_PED_CARGA`;
+4. **Exibição do conteúdo inserido em formato ALV**, com nomes amigáveis nas colunas;
+5. **Mensagens de feedback** informando sucesso ou falha da operação;
+6. Utilização de comandos como `INSERT`, `COMMIT WORK`, `ROLLBACK WORK`, `MESSAGE`, `SELECTION-SCREEN BLOCK`, `REUSE_ALV_GRID_DISPLAY`.
+**Requisitos Técnicos:**
+* O programa deve estar associado à classe de mensagens `ZMNN_CASE`.
+* O título dos blocos da seleção deve estar definido nos elementos de texto (`text-001`, `text-002`, etc.).
+* A transação deve ser desenvolvida de forma simples, limpa e funcional, podendo ser utilizada por um usuário final não técnico.
+
+
+
+REPORT znn_gestao_pedidos_input MESSAGE-ID zmnn_case.
+
+"-----------------------------
+" TYPES E VARIÁVEIS GLOBAIS
+"-----------------------------
+DATA: wa_cabec     TYPE zt07_ped_cabec,
+      wa_item      TYPE zt07_ped_item,
+      wa_carga     TYPE zt07_ped_carga,
+      it_relatorio TYPE STANDARD TABLE OF zt07_ped_item,
+      wa_relat     TYPE zt07_ped_item,
+      it_fcat      TYPE lvc_t_fcat,
+      wa_fcat      TYPE lvc_s_fcat.
+
+"-----------------------------
+" TELA DE SELEÇÃO
+"-----------------------------
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+PARAMETERS: p_vbeln TYPE zt07_ped_cabec-vbeln OBLIGATORY,
+            p_erdat TYPE zt07_ped_cabec-erdat DEFAULT sy-datum,
+            p_ernam TYPE zt07_ped_cabec-ernam DEFAULT sy-uname.
+SELECTION-SCREEN END OF BLOCK b1.
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE text-002.
+PARAMETERS: p_posnr TYPE zt07_ped_item-posnr,
+            p_matnr TYPE zt07_ped_item-matnr,
+            p_maktx TYPE zt07_ped_item-maktx,
+            p_fkimg TYPE zt07_ped_item-fkimg,
+            p_netwr TYPE zt07_ped_item-netwr,
+            p_meins TYPE zt07_ped_item-meins,
+            p_waers TYPE zt07_ped_item-waers.
+SELECTION-SCREEN END OF BLOCK b2.
+
+SELECTION-SCREEN BEGIN OF BLOCK b3 WITH FRAME TITLE text-003.
+PARAMETERS: p_data_carga TYPE zt07_ped_carga-data_carga DEFAULT sy-datum.
+SELECTION-SCREEN END OF BLOCK b3.
+
+"-----------------------------
+" START-OF-SELECTION
+"-----------------------------
+START-OF-SELECTION.
+
+  " Validações básicas
+  IF p_posnr IS INITIAL OR p_matnr IS INITIAL OR p_fkimg IS INITIAL OR p_netwr IS INITIAL. ( is initial quer dizer " está vázio", ou seja se algum parameter não tiver completo ele dará esse erro)
+    MESSAGE e004 WITH 'Preencha todos os campos obrigatórios do item.'.
+    EXIT.
+  ENDIF.
+
+  " Preencher e inserir na tabela de cabeçalho
+  wa_cabec-vbeln       = p_vbeln.
+  wa_cabec-erdat       = p_erdat.
+  wa_cabec-ernam       = p_ernam.
+  wa_cabec-data_carga  = p_data_carga.
+  wa_cabec-hora_carga  = sy-uzeit.
+
+  INSERT zt07_ped_cabec FROM wa_cabec.
+  IF sy-subrc = 0.
+    MESSAGE s001 WITH.
+  ELSE.
+    MESSAGE e003 WITH.
+    RETURN.
+  ENDIF.
+
+  " Preencher e inserir na tabela de itens
+  wa_item-vbeln       = p_vbeln.
+  wa_item-posnr       = p_posnr.
+  wa_item-matnr       = p_matnr.
+  wa_item-maktx       = p_maktx.
+  wa_item-fkimg       = p_fkimg.
+  wa_item-netwr       = p_netwr.
+  wa_item-data_carga  = p_data_carga.
+  wa_item-hora_carga  = sy-uzeit.
+  wa_item-meins       = p_meins.
+  wa_item-waers       = p_waers.
+
+  INSERT zt07_ped_item FROM wa_item.
+  IF sy-subrc = 0.
+    MESSAGE s002 WITH.
+  ELSE.
+    MESSAGE e003 WITH.
+    RETURN.
+  ENDIF.
+
+  " Preencher e inserir na tabela de carga
+  wa_carga-vbeln       = p_vbeln.
+  wa_carga-posnr       = p_posnr.
+  wa_carga-matnr       = p_matnr.
+  wa_carga-fkimg       = p_fkimg.
+  wa_carga-netwr       = p_netwr.
+  wa_carga-erdat       = p_erdat.
+  wa_carga-ernam       = p_ernam.
+  wa_carga-data_carga  = p_data_carga.
+  wa_carga-meins       = p_meins.
+  wa_carga-waers       = p_waers.
+
+  INSERT zt07_ped_carga FROM wa_carga.
+  IF sy-subrc = 0.
+    MESSAGE s003 WITH.
+    COMMIT WORK AND WAIT.
+  ELSE.
+    MESSAGE e003 WITH.
+    ROLLBACK WORK.
+    EXIT.
+  ENDIF.
+
+  " Carregar dados inseridos para exibir via ALV
+  SELECT * FROM zt07_ped_item INTO TABLE it_relatorio WHERE vbeln = @p_vbeln.
+  IF sy-subrc = 0.
+
+    " Montar catálogo amigável
+    CLEAR it_fcat.
+
+    wa_fcat-fieldname = 'VBELN'. wa_fcat-seltext_m = 'Pedido'.         APPEND wa_fcat TO it_fcat.
+    wa_fcat-fieldname = 'POSNR'. wa_fcat-seltext_m = 'Posição'.        APPEND wa_fcat TO it_fcat.
+    wa_fcat-fieldname = 'MATNR'. wa_fcat-seltext_m = 'Código Produto'. APPEND wa_fcat TO it_fcat.
+    wa_fcat-fieldname = 'MAKTX'. wa_fcat-seltext_m = 'Descrição'.      APPEND wa_fcat TO it_fcat.
+    wa_fcat-fieldname = 'FKIMG'. wa_fcat-seltext_m = 'Quantidade'.     APPEND wa_fcat TO it_fcat.
+    wa_fcat-fieldname = 'NETWR'. wa_fcat-seltext_m = 'Valor Total'.    APPEND wa_fcat TO it_fcat.
+    wa_fcat-fieldname = 'MEINS'. wa_fcat-seltext_m = 'Unidade'.        APPEND wa_fcat TO it_fcat.
+    wa_fcat-fieldname = 'WAERS'. wa_fcat-seltext_m = 'Moeda'.          APPEND wa_fcat TO it_fcat.
+
+    CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+      EXPORTING
+        i_callback_program = sy-repid
+        it_fieldcat        = it_fcat
+      TABLES
+        t_outtab           = it_relatorio.
+  ENDIF.
