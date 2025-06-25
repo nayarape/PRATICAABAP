@@ -1,26 +1,23 @@
 
-
-## 🧾 `REPORT ZI07_CARGA`
-
 REPORT ZI07_CARGA.
 
-TABLES: ekko, ekpo, mara, zt07_ped_carga. " tabelas padrão e tabela Z usada no insert
+TABLES: ekko, ekpo, mara, zt07_ped_carga.
 
-INCLUDE ZI07_CARGA_TOP. " tipos e variáveis globais
-INCLUDE ZI07_CARGA_SEL. " parâmetros da tela de seleção
-INCLUDE ZI07_CARGA_F01. " formulários principais
+INCLUDE ZI07_CARGA_TOP.  " tipos e variáveis globais
+INCLUDE ZI07_CARGA_SEL.  " parâmetros da tela
+INCLUDE ZI07_CARGA_F01.  " lógicas principais
 
 START-OF-SELECTION.
-  PERFORM f_upload_arquivo.   " lê e separa os dados do arquivo
-  PERFORM f_validacao.        " valida os dados nas tabelas padrão do SAP
-  PERFORM f_inserir_tabelaz.  " insere os dados válidos na tabela Z
-  PERFORM f_exibir_alv.       " mostra os dados no ALV
+  PERFORM f_upload_arquivo.   " lê o arquivo txt
+  PERFORM f_validacao.        " valida os dados com tabelas padrão
+  PERFORM f_inserir_tabelaz.  " insere os dados validados na Z
+  PERFORM f_exibir_alv.       " exibe resultado com ALV zebrado
 END-OF-SELECTION.
 
-## 📦 `INCLUDE ZI07_CARGA_TOP`
 
-```abap
-* estrutura com os campos que vêm do arquivo
+### INCLUDE ZI07\_CARGA\_TOP
+
+
 TYPES: BEGIN OF ty_entrada,
          ebeln TYPE ekko-ebeln,
          ebelp TYPE ekpo-ebelp,
@@ -30,44 +27,54 @@ TYPES: BEGIN OF ty_entrada,
          erdat TYPE dats,
        END OF ty_entrada.
 
-* variáveis internas para armazenar os registros do arquivo e os que foram validados
+TYPES: BEGIN OF ty_saida,
+         vbeln      TYPE zt07_ped_carga-vbeln,
+         posnr      TYPE zt07_ped_carga-posnr,
+         matnr      TYPE zt07_ped_carga-matnr,
+         fkimg      TYPE zt07_ped_carga-fkimg,
+         netwr      TYPE zt07_ped_carga-netwr,
+         meins      TYPE zt07_ped_carga-meins,
+         waers      TYPE zt07_ped_carga-waers,
+         erdat      TYPE zt07_ped_carga-erdat,
+         uzeit      TYPE zt07_ped_carga-uzeit,
+         data_carga TYPE zt07_ped_carga-data_carga,
+         hora_carga TYPE zt07_ped_carga-hora_carga,
+         mensagem   TYPE char100,
+       END OF ty_saida.
+
 DATA: it_entrada TYPE TABLE OF ty_entrada,
       wa_entrada TYPE ty_entrada,
       it_final   TYPE TABLE OF ty_entrada,
-      wa_final   TYPE ty_entrada.
-
-* recebe cada linha bruta do arquivo
-DATA: lt_raw  TYPE STANDARD TABLE OF string,
-      lv_line TYPE string.
-
-* objeto do ALV OO (novo modelo)
-DATA: lo_alv TYPE REF TO cl_salv_table.
+      wa_final   TYPE ty_entrada,
+      it_saida   TYPE TABLE OF ty_saida,
+      wa_saida   TYPE ty_saida,
+      lt_raw     TYPE STANDARD TABLE OF string,
+      lv_line    TYPE string,
+      lo_alv     TYPE REF TO cl_salv_table.
 
 
-## 🖼️ `INCLUDE ZI07_CARGA_SEL`
+### INCLUDE ZI07\_CARGA\_SEL
 
-
-* tela de seleção com o campo para o caminho do arquivo
+```abap
 SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
 PARAMETERS: p_file TYPE rlgrap-filename OBLIGATORY.
 SELECTION-SCREEN END OF BLOCK b1.
 
-* ajuda de busca de arquivos no F4
 AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
   CALL FUNCTION 'F4_FILENAME'
     IMPORTING file_name = p_file.
 
-## 🔧 `INCLUDE ZI07_CARGA_F01`
 
-```abap
-* faz o upload do arquivo e monta a tabela it_entrada
+
+### INCLUDE ZI07\_CARGA\_F01
+
+
 FORM f_upload_arquivo.
-
   CALL FUNCTION 'GUI_UPLOAD'
     EXPORTING
       filename            = p_file
       filetype            = 'ASC'
-      has_field_separator = 'X' " separação por ponto e vírgula
+      has_field_separator = 'X'
     TABLES
       data_tab            = lt_raw
     EXCEPTIONS
@@ -84,47 +91,29 @@ FORM f_upload_arquivo.
       wa_entrada-matnr
       wa_entrada-fkimg
       wa_entrada-netwr
-      wa_entrada-erdat. " aqui já vem a data pronta no arquivo
-
+      wa_entrada-erdat.
     APPEND wa_entrada TO it_entrada.
   ENDLOOP.
-
 ENDFORM.
-```
 
-
-* valida os dados com base nas tabelas padrão do SAP
 FORM f_validacao.
-
   LOOP AT it_entrada INTO wa_entrada.
-
-    * se o pedido não existir na ekko, já pula
     SELECT SINGLE ebeln FROM ekko WHERE ebeln = @wa_entrada-ebeln.
     IF sy-subrc <> 0. CONTINUE. ENDIF.
 
-    * se o item não existir no pedido, também pula
     SELECT SINGLE ebelp FROM ekpo
       WHERE ebeln = @wa_entrada-ebeln
         AND ebelp = @wa_entrada-ebelp.
     IF sy-subrc <> 0. CONTINUE. ENDIF.
 
-    * se o material não existir na mara, não continua
     SELECT SINGLE matnr FROM mara WHERE matnr = @wa_entrada-matnr.
     IF sy-subrc <> 0. CONTINUE. ENDIF.
 
-    * só entra aqui se passou por todos os testes acima
     APPEND wa_entrada TO it_final.
-
   ENDLOOP.
-
 ENDFORM.
-```
 
----
-
-* insere os dados validados na tabela ZT07_PED_CARGA
 FORM f_inserir_tabelaz.
-
   LOOP AT it_final INTO wa_entrada.
 
     DATA wa_carga TYPE zt07_ped_carga.
@@ -135,53 +124,58 @@ FORM f_inserir_tabelaz.
     wa_carga-fkimg      = wa_entrada-fkimg.
     wa_carga-netwr      = wa_entrada-netwr.
     wa_carga-erdat      = wa_entrada-erdat.
-    wa_carga-uzeit      = sy-uzeit.      " hora atual
-    wa_carga-data_carga = sy-datum.      " data atual
+    wa_carga-uzeit      = sy-uzeit.
+    wa_carga-data_carga = sy-datum.
     wa_carga-hora_carga = sy-uzeit.
 
-    * aqui estou buscando a unidade e moeda direto da ekpo
     SELECT SINGLE meins waers INTO (wa_carga-meins, wa_carga-waers)
       FROM ekpo
       WHERE ebeln = wa_entrada-ebeln
         AND ebelp = wa_entrada-ebelp.
 
-    * insere na tabela Z criada no início do case
     INSERT zt07_ped_carga FROM wa_carga.
 
-    * salva se der certo, senão desfaz
     IF sy-subrc = 0.
       COMMIT WORK AND WAIT.
+
+      " Atribuição manual campo a campo
+      wa_saida-vbeln      = wa_carga-vbeln.
+      wa_saida-posnr      = wa_carga-posnr.
+      wa_saida-matnr      = wa_carga-matnr.
+      wa_saida-fkimg      = wa_carga-fkimg.
+      wa_saida-netwr      = wa_carga-netwr.
+      wa_saida-meins      = wa_carga-meins.
+      wa_saida-waers      = wa_carga-waers.
+      wa_saida-erdat      = wa_carga-erdat.
+      wa_saida-uzeit      = wa_carga-uzeit.
+      wa_saida-data_carga = wa_carga-data_carga.
+      wa_saida-hora_carga = wa_carga-hora_carga.
+
+      wa_saida-mensagem = 'Registro inserido com sucesso'.
+      APPEND wa_saida TO it_saida.
     ELSE.
       ROLLBACK WORK.
     ENDIF.
 
   ENDLOOP.
-
 ENDFORM.
-```
 
----
-
-
-* exibe todos os dados da tabela Z com ALV moderno
 FORM f_exibir_alv.
-
-  DATA: lt_saida TYPE TABLE OF zt07_ped_carga.
-
-  * busco direto da base Z que foi alimentada
-  SELECT * FROM zt07_ped_carga INTO TABLE lt_saida.
+  DATA: lo_display TYPE REF TO cl_salv_display_settings.
 
   TRY.
       cl_salv_table=>factory(
         IMPORTING r_salv_table = lo_alv
-        CHANGING  t_table      = lt_saida ).
+        CHANGING  t_table      = it_saida ).
 
-      lo_alv->display( ). " mostra o relatório com filtros, ordenação, etc
+      " Ativa o padrão zebrado (alternância de cores nas linhas)
+      lo_display = lo_alv->get_display_settings( ).
+      lo_display->set_striped_pattern( cl_salv_display_settings=>true ).
+
+      lo_alv->display( ).
 
     CATCH cx_salv_msg INTO DATA(lx_msg).
       MESSAGE lx_msg->get_text( ) TYPE 'E'.
   ENDTRY.
-
 ENDFORM.
 ```
-
