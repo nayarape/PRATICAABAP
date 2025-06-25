@@ -1,0 +1,262 @@
+REPORT ZI07_CARGA.
+
+TABLES : ekko, ekpo, mara, ztnn_ped_carga.
+
+INCLUDE ZI07_CARGA_SEL.
+INCLUDE ZI07_CARGA_TOP.
+INCLUDE ZI07_CARGA_F01.
+
+START-OF-SELECTION.
+
+perform f_upload_arquivo.
+perform f_validacao.
+perform f_inserir_tabelaz.
+perform f_exibir_alv.
+
+END-OF-SELECTION.
+
+
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+
+PARAMETERS: p_file TYPE rlgrap-filename OBLIGATORY.
+
+SELECTION-SCREEN END OF BLOCK b1.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+  CALL FUNCTION 'F4_FILENAME'
+    IMPORTING
+      file_name = p_file.
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZI07_CARGA_TOP
+*&---------------------------------------------------------------------*
+DATA : lv_data type sy-datum,
+       lv_hora type sy-uzeit.
+
+DATA: lt_raw  TYPE STANDARD TABLE  OF string,
+      lv_line TYPE string.
+
+TYPES: BEGIN OF ty_entrada,
+         ebeln TYPE ekko-ebeln,
+         ebelp TYPE ekpo-ebelp,
+         matnr TYPE mara-matnr,
+         fkimg TYPE ekpo-ktmng,
+         netwr TYPE ekpo-netwr,
+         erdat TYPE dats,
+       END OF ty_entrada.
+
+TYPES: BEGIN OF ty_saida,
+         vbeln  TYPE zt07_ped_carga-vbeln,
+         posnr  TYPE zt07_ped_carga-posnr,
+         matnr  TYPE zt07_ped_carga-matnr,
+         fkimg  TYPE zt07_ped_carga-fkimg,
+         netwr  TYPE zt07_ped_carga-netwr,
+         meins  TYPE zt07_ped_carga-meins,
+         waers  TYPE zt07_ped_carga-waers,
+         data_carga TYPE sy-datum,
+         data_hora TYPE sy-uzeit,
+
+       END OF ty_saida.
+
+DATA: wa_saida TYPE ty_saida,
+      it_saida TYPE  TABLE OF ty_saida.
+
+DATA: it_entrada TYPE  TABLE OF ty_entrada,
+      wa_entrada TYPE ty_entrada,
+      it_final   TYPE  TABLE OF ty_entrada.
+
+
+
+DATA: it_fieldcat TYPE slis_t_fieldcat_alv,
+      wa_fieldcat TYPE slis_fieldcat_alv.
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZI07_CARGA_F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form f_upload_arquivo
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_upload_arquivo .
+
+  CALL FUNCTION 'GUI_UPLOAD'
+    EXPORTING
+      filename            = p_file
+      filetype            = 'ASC'
+      has_field_separator = 'X'
+    TABLES
+      data_tab            = lt_raw
+    EXCEPTIONS
+      OTHERS              = 1.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'Erro no upload do arquivo.' TYPE 'E'.
+  ENDIF.
+
+
+    LOOP AT lt_raw INTO lv_line.
+    SPLIT lv_line AT ';' INTO
+      wa_entrada-ebeln
+      wa_entrada-ebelp
+      wa_entrada-matnr
+      wa_entrada-fkimg
+      wa_entrada-netwr
+      wa_entrada-erdat
+
+
+
+    wa_entrada-erdat = lv_data.
+
+
+    APPEND wa_entrada TO it_entrada.
+  ENDLOOP.
+
+
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form f_validacao
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_validacao .
+
+  LOOP AT it_entrada INTO wa_entrada.
+
+    SELECT  ebeln FROM ekko
+      WHERE ebeln = @wa_entrada-ebeln.
+    IF sy-subrc <> 0.
+      CONTINUE.
+    ENDIF.
+
+    SELECT  ebelp FROM ekpo
+      WHERE ebeln = @wa_entrada-ebeln
+        AND ebelp = @wa_entrada-ebelp.
+    IF sy-subrc <> 0.
+      CONTINUE.
+    ENDIF.
+
+    SELECT  matnr FROM mara
+      WHERE matnr = @wa_entrada-matnr.
+    IF sy-subrc <> 0.
+      CONTINUE.
+    ENDIF.
+
+    APPEND wa_entrada TO it_final.
+
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form f_inserir_tabelaz
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_inserir_tabelaz .
+
+  LOOP AT it_final INTO wa_entrada.
+    INSERT zt07_ped_carga FROM
+      vbeln       = wa_entrada-ebeln
+      posnr       = wa_entrada-ebelp
+      matnr       = wa_entrada-matnr
+      fkimg       = wa_entrada-fkimg
+      netwr       = wa_entrada-netwr
+      erdat       = wa_entrada-erdat
+      uzeit       = wa_entrada-uzeit
+      data_carga  = sy-datum
+      hora_carga  = sy-uzeit  .
+
+    IF sy-subrc is INITIAL.
+      COMMIT WORK AND WAIT.
+    ELSE.
+      ROLLBACK WORK.
+     ENDIF.
+
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form f_exibir_alv
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM f_exibir_alv .
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'VBELN'.
+  wa_fieldcat-seltext_l = 'Código do Documento'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+   wa_fieldcat-fieldname = 'POSNR'.
+   wa_fieldcat-seltext_l = 'Item do Pedido'.
+   APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+   wa_fieldcat-fieldname = 'MATNR'.
+   wa_fieldcat-seltext_l = 'Código do Material'.
+   APPEND wa_fieldcat TO it_fieldcat.
+
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'FKIMG'.
+  wa_fieldcat-seltext_l = 'Quantidade'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'NETWR'.
+  wa_fieldcat-seltext_l = 'Valor Total'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'MEINS'.
+  wa_fieldcat-seltext_l = 'Unidade'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'WAERS'.
+  wa_fieldcat-seltext_l = 'Moeda'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'DATA_CARGA'.
+  wa_fieldcat-seltext_l = 'DATA'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CLEAR wa_fieldcat.
+  wa_fieldcat-fieldname = 'HORA_CARGA'.
+  wa_fieldcat-seltext_l = 'HORA'.
+  APPEND wa_fieldcat TO it_fieldcat.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      it_fieldcat = it_fieldcat
+    TABLES
+      t_outtab    = it_saida
+    EXCEPTIONS
+      others      = 1.
+
+
+
+
+
+ENDFORM.
