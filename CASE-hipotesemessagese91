@@ -1,0 +1,97 @@
+
+## 🛠️ **1. Criação da Classe de Mensagem na SE91**
+
+### Vá para a transação `SE91` e siga os passos:
+
+* **Classe de mensagens**:
+
+  ```
+  ZMNN_CASE
+  ```
+
+* **Descrição**:
+
+  ```
+  Mensagens para Gestão de Pedidos - Case Técnico
+  ```
+
+* **Mensagens a criar:**
+
+| Nº  | Tipo | Texto da Mensagem                          |
+| --- | ---- | ------------------------------------------ |
+| 001 | I    | Pedido inserido com sucesso                |
+| 002 | S    | Pedido atualizado com sucesso              |
+| 003 | E    | Pedido não encontrado                      |
+| 004 | W    | O código do pedido & já existe na base     |
+| 005 | S    | Consulta finalizada. Total de registros: & |
+| 006 | S    | Pedido & criado com sucesso                |
+
+Depois clique em **Salvar** e atribua a uma requisição, se for solicitado.
+
+---
+
+## 💻 **2. Código simples usando essas mensagens (exemplo real)**
+
+```abap
+REPORT znn_demo_mensagens MESSAGE-ID zmnn_case.
+
+DATA: lv_vbeln TYPE zt07_ped_cabec-vbeln VALUE 'P9001',
+      wa_cabec TYPE zt07_ped_cabec.
+
+" Verifica se o pedido já existe
+SELECT SINGLE * INTO wa_cabec
+  FROM zt07_ped_cabec
+  WHERE vbeln = @lv_vbeln.
+
+IF sy-subrc = 0.
+  " Mensagem de aviso se já existir
+  MESSAGE w004 WITH lv_vbeln.
+
+ELSE.
+  " Preenche dados e insere novo registro
+  wa_cabec-vbeln       = lv_vbeln.
+  wa_cabec-erdat       = sy-datum.
+  wa_cabec-ernam       = sy-uname.
+  wa_cabec-data_carga  = sy-datum.
+  wa_cabec-hora_carga  = sy-uzeit.
+
+  INSERT zt07_ped_cabec FROM wa_cabec.
+
+  IF sy-subrc = 0.
+    " Exibe mensagem com parâmetro dinâmico
+    MESSAGE s006 WITH lv_vbeln.
+  ELSE.
+    MESSAGE e003. " Erro genérico
+  ENDIF.
+
+ENDIF.
+```
+
+---
+
+### ✅ O que esse código faz:
+
+* Verifica se o pedido `P9001` já existe
+* Se existir, mostra um `WARNING` (mensagem 004)
+* Se não existir, insere na tabela `ZT07_PED_CABEC`
+* Após inserir com sucesso, mostra mensagem personalizada com o número do pedido
+
+---
+
+## 🚀 Resultado esperado:
+
+Se você executar esse programa:
+
+* E o pedido **já estiver cadastrado**:
+
+  ```
+  ⚠️ O código do pedido P9001 já existe na base
+  ```
+
+* Se for **inserido com sucesso**:
+
+  ```
+  ✅ Pedido P9001 criado com sucesso
+  ```
+
+
