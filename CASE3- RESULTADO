@@ -1,0 +1,86 @@
+*&---------------------------------------------------------------------*
+*& Report ZR07_CASE_LOG
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZR07_CASE_LOG.
+
+TABLES : ZT07_PED_CARGA, MAKT.
+
+
+* Tela de seleção com select options de data de criação
+
+SELECTION-SCREEN BEGIN OF BLOCK B1 WITH FRAME TITLE TEXT-001.
+
+ SELECT-OPTIONS: s_erdat FOR ZT07_PED_CARGA-ERDAT OBLIGATORY.
+
+
+SELECTION-SCREEN END OF BLOCK B1.
+
+
+* formatação tabela de saída
+TYPES: BEGIN OF ty_saida,
+     vbeln type zt07_ped_carga-vbeln,
+     posnr type zt07_ped_carga-posnr,
+     matnr type zt07_ped_carga-matnr,
+     maktx type makt-maktx,
+     fkimg type zt07_ped_carga-fkimg,
+     netwr type zt07_ped_carga-netwr,
+     erdat type zt07_ped_carga-erdat,
+     data_carga type zt07_ped_carga-data_carga,
+     dias type i,
+    end of ty_saida.
+
+* Declaração das variáveis
+DATA : it_saida TYPE TABLE OF ty_saida,
+      wa_saida type ty_saida,
+      lo_alv  type ref to cl_salv_table.
+
+
+
+  START-OF-SELECTION.
+
+* Select com joins para selecionar campos de duas tabelas a partir da data no select options.
+
+  SELECT
+    a~vbeln,
+    a~posnr,
+    a~matnr,
+    b~maktx,
+    a~fkimg,
+    a~netwr,
+    a~erdat,
+    a~data_carga,
+    days_between( a~erdat, @sy-datum ) AS dias
+  FROM zt07_ped_carga AS a
+  INNER JOIN makt AS b ON a~matnr = b~matnr
+  AND b~spras = @sy-langu
+  WHERE a~erdat in @s_erdat
+  INTO TABLE @it_saida.
+
+
+IF sy-subrc <> 0.
+  MESSAGE 'Nenhum dado encontrado.' TYPE 'I'.
+  EXIT.
+ENDIF.
+
+
+* Exibição do alv da tabela interna
+
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = lo_alv
+        CHANGING  t_table      = it_saida ).
+
+
+      lo_alv->display( ).
+
+    CATCH cx_salv_msg INTO DATA(lx_msg).
+      MESSAGE lx_msg->get_text( ) TYPE 'E'.
+  ENDTRY.
+
+
+
+
+
+  END-OF-SELECTION.
