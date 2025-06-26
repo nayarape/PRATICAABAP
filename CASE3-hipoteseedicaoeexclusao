@@ -1,0 +1,50 @@
+---------------------------------------------------------------*
+* Hipótese A – Manutenção de dados (edição e exclusão)         *
+*---------------------------------------------------------------*
+
+* Enunciado:
+* Criar um programa que permita consultar registros da tabela
+* ZT07_PED_CARGA com filtros, e permitir a alteração dos campos
+* FKIMG e NETWR, além da exclusão de registros selecionados.
+
+
+  WRITE: / 'Deseja excluir ou atualizar algum registro?'.
+
+  PARAMETERS: p_vbeln TYPE zt07_ped_carga-vbeln,
+            p_posnr TYPE zt07_ped_carga-posnr,
+            p_fkimg TYPE zt07_ped_carga-fkimg,
+            p_netwr TYPE zt07_ped_carga-netwr.
+
+PARAMETERS: rb_atualizar RADIOBUTTON GROUP act DEFAULT 'X',
+            rb_excluir   RADIOBUTTON GROUP act.
+
+  ULINE.
+  WRITE: / 'Informe A para atualizar ou E para excluir no campo AÇÃO.'.
+
+  IF rb_excluir = 'X'.
+  DELETE FROM zt07_ped_carga WHERE vbeln = p_vbeln AND posnr = p_posnr.
+  IF sy-subrc = 0.
+    MESSAGE 'Registro excluído com sucesso.' TYPE 'S'.
+  ELSE.
+    MESSAGE 'Registro não encontrado para exclusão.' TYPE 'E'.
+  ENDIF.
+
+ELSEIF rb_atualizar = 'X'.
+  UPDATE zt07_ped_carga SET fkimg = p_fkimg netwr = p_netwr
+    WHERE vbeln = p_vbeln AND posnr = p_posnr.
+  IF sy-subrc = 0.
+    MESSAGE 'Registro atualizado com sucesso.' TYPE 'S'.
+  ELSE.
+    MESSAGE 'Registro não encontrado para atualização.' TYPE 'E'.
+  ENDIF.
+ENDIF.
+
+  ELSEIF p_acao = 'A'.
+    UPDATE zt07_ped_carga SET fkimg = p_fkimg netwr = p_netwr
+      WHERE vbeln = p_vbeln AND posnr = p_posnr.
+    IF sy-subrc = 0.
+      MESSAGE 'Registro atualizado com sucesso.' TYPE 'S'.
+    ELSE.
+      MESSAGE 'Registro não encontrado para atualização.' TYPE 'E'.
+    ENDIF.
+  ENDIF.
