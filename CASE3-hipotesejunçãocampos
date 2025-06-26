@@ -1,0 +1,62 @@
+*---------------------------------------------------------------*
+* Hipótese B – Relatório consolidado com totais                *
+*---------------------------------------------------------------*
+
+* Enunciado:
+* Criar um relatório ALV que agrupe os dados da tabela
+* ZT07_PED_CARGA por código de material (MATNR), somando as
+* quantidades e valores totais por grupo.
+
+
+  
+
+REPORT zt07_relatorio_total_matnr.
+
+TABLES: zt07_ped_carga.
+
+* Estrutura para armazenar os totais agrupados por material
+TYPES: BEGIN OF ty_resumo,
+         matnr TYPE zt07_ped_carga-matnr,       " Código do material
+         total_qtd TYPE zt07_ped_carga-fkimg,   " Quantidade total
+         total_val TYPE zt07_ped_carga-netwr,   " Valor total
+       END OF ty_resumo.
+
+* Tabelas internas e work areas
+DATA: it_resumo TYPE STANDARD TABLE OF ty_resumo WITH EMPTY KEY,  " tabela de agrupamento
+      wa_resumo TYPE ty_resumo,                    " linha da tabela de resumo
+      it_dados  TYPE STANDARD TABLE OF zt07_ped_carga,  " dados brutos
+      wa_dados  TYPE zt07_ped_carga.                    " linha dos dados brutos
+
+START-OF-SELECTION.
+
+  * Seleciona todos os dados da tabela Z
+  SELECT * FROM zt07_ped_carga INTO TABLE it_dados.
+
+  * Ordena a tabela de resumo por matnr antes do BINARY SEARCH
+  SORT it_resumo BY matnr.
+
+  * Loop para acumular os totais por material
+  LOOP AT it_dados INTO wa_dados.
+    * Verifica se já existe linha do material na tabela de resumo usando BINARY SEARCH
+    READ TABLE it_resumo INTO wa_resumo WITH KEY matnr = wa_dados-matnr BINARY SEARCH.
+    IF sy-subrc = 0.
+      * Se já existe, acumula os valores
+      wa_resumo-total_qtd = wa_resumo-total_qtd + wa_dados-fkimg.
+      wa_resumo-total_val = wa_resumo-total_val + wa_dados-netwr.
+      MODIFY it_resumo FROM wa_resumo INDEX sy-tabix.
+    ELSE.
+      * Se não existe, cria novo agrupamento
+      wa_resumo-matnr     = wa_dados-matnr.
+      wa_resumo-total_qtd = wa_dados-fkimg.
+      wa_resumo-total_val = wa_dados-netwr.
+      APPEND wa_resumo TO it_resumo.
+      SORT it_resumo BY matnr.  " Reordena após inserir novo item
+    ENDIF.
+  ENDLOOP.
+
+  * Exibição dos totais agrupados
+  LOOP AT it_resumo INTO wa_resumo.
+    WRITE: / 'Material:', wa_resumo-matnr,
+             'Total Qtde:', wa_resumo-total_qtd,
+             'Total Valor:', wa_resumo-total_val.
+  ENDLOOP.
