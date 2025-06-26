@@ -1,0 +1,63 @@
+*---------------------------------------------------------------*
+* Hipótese C – Enriquecimento com outra tabela                 *
+*---------------------------------------------------------------*
+
+* Enunciado:
+* Criar um programa que cruze os dados da tabela ZT07_PED_CARGA
+* com a tabela EKKO para exibir, além dos dados já existentes,
+* o nome do solicitante (ERNAM) e a data de criação (AEDAT)
+* do pedido.
+
+REPORT zt07_cruzamento_ekko.
+
+TABLES: zt07_ped_carga, ekko.
+
+TYPES: BEGIN OF ty_resultado,
+         vbeln TYPE zt07_ped_carga-vbeln,
+         posnr TYPE zt07_ped_carga-posnr,
+         matnr TYPE zt07_ped_carga-matnr,
+         fkimg TYPE zt07_ped_carga-fkimg,
+         netwr TYPE zt07_ped_carga-netwr,
+         erdat TYPE ekko-aedat,
+         ernam TYPE ekko-ernam,
+       END OF ty_resultado.
+
+DATA: it_resultado TYPE STANDARD TABLE OF ty_resultado,
+      wa_resultado TYPE ty_resultado,
+      it_dados     TYPE STANDARD TABLE OF zt07_ped_carga,
+      wa_dados     TYPE zt07_ped_carga.
+
+START-OF-SELECTION.
+
+  * Seleciona os dados da tabela Z
+  SELECT * FROM zt07_ped_carga INTO TABLE it_dados.
+
+  * Para cada linha da ZTABELA, busca dados adicionais na EKKO
+  LOOP AT it_dados INTO wa_dados.
+
+    wa_resultado-vbeln = wa_dados-vbeln.
+    wa_resultado-posnr = wa_dados-posnr.
+    wa_resultado-matnr = wa_dados-matnr.
+    wa_resultado-fkimg = wa_dados-fkimg.
+    wa_resultado-netwr = wa_dados-netwr.
+
+    SELECT SINGLE aedat ernam FROM ekko
+      INTO (wa_resultado-erdat, wa_resultado-ernam)
+      WHERE ebeln = wa_dados-vbeln.
+
+    APPEND wa_resultado TO it_resultado.
+  ENDLOOP.
+
+  * Exibição dos dados cruzados em ALV
+  DATA: lo_alv TYPE REF TO cl_salv_table.
+
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = lo_alv
+        CHANGING  t_table      = it_resultado ).
+
+      lo_alv->display( ).
+
+    CATCH cx_salv_msg INTO DATA(lx_msg).
+      MESSAGE lx_msg->get_text( ) TYPE 'E'.
+  ENDTRY.
