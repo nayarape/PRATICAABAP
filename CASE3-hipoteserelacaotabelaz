@@ -1,0 +1,77 @@
+*---------------------------------------------------------------*
+* Hipótese D – Relatório cruzado entre tabelas Z internas     *
+*---------------------------------------------------------------*
+
+* Enunciado:
+* Criar um programa que una os dados das tabelas ZT07_PED_CABEC,
+* ZT07_PED_ITEM e ZT07_PED_CARGA, relacionando pedidos, itens
+* e dados de carga. Exibir um relatório completo em ALV.
+
+REPORT zt07_cruzamento_zs.
+
+TABLES: zt07_ped_cabec, zt07_ped_item, zt07_ped_carga.
+
+TYPES: BEGIN OF ty_resultado,
+         vbeln       TYPE zt07_ped_cabec-vbeln,
+         erdat       TYPE zt07_ped_cabec-erdat,
+         ernam       TYPE zt07_ped_cabec-ernam,
+         posnr       TYPE zt07_ped_item-posnr,
+         matnr       TYPE zt07_ped_item-matnr,
+         qtd_item    TYPE zt07_ped_item-fkimg,
+         qtd_carga   TYPE zt07_ped_carga-fkimg,
+         netwr       TYPE zt07_ped_carga-netwr,
+         waers       TYPE zt07_ped_carga-waers,
+         hora_carga  TYPE zt07_ped_carga-hora_carga,
+       END OF ty_resultado.
+
+DATA: it_resultado TYPE STANDARD TABLE OF ty_resultado,
+      wa_resultado TYPE ty_resultado.
+
+DATA: it_cabec TYPE STANDARD TABLE OF zt07_ped_cabec,
+      it_item  TYPE STANDARD TABLE OF zt07_ped_item,
+      it_carga TYPE STANDARD TABLE OF zt07_ped_carga.
+
+START-OF-SELECTION.
+
+  * Lê todas as tabelas Z criadas anteriormente
+  SELECT * FROM zt07_ped_cabec INTO TABLE it_cabec.
+  SELECT * FROM zt07_ped_item  INTO TABLE it_item.
+  SELECT * FROM zt07_ped_carga INTO TABLE it_carga.
+
+  * Junta os dados entre as 3 tabelas
+  LOOP AT it_cabec INTO DATA(wa_cabec).
+    LOOP AT it_item INTO DATA(wa_item) WHERE vbeln = wa_cabec-vbeln.
+      LOOP AT it_carga INTO DATA(wa_carga)
+        WHERE vbeln = wa_item-vbeln AND posnr = wa_item-posnr.
+
+        CLEAR wa_resultado.
+        wa_resultado-vbeln      = wa_cabec-vbeln.
+        wa_resultado-erdat      = wa_cabec-erdat.
+        wa_resultado-ernam      = wa_cabec-ernam.
+        wa_resultado-posnr      = wa_item-posnr.
+        wa_resultado-matnr      = wa_item-matnr.
+        wa_resultado-qtd_item   = wa_item-fkimg.
+        wa_resultado-qtd_carga  = wa_carga-fkimg.
+        wa_resultado-netwr      = wa_carga-netwr.
+        wa_resultado-waers      = wa_carga-waers.
+        wa_resultado-hora_carga = wa_carga-hora_carga.
+
+        APPEND wa_resultado TO it_resultado.
+
+      ENDLOOP.
+    ENDLOOP.
+  ENDLOOP.
+
+  * Exibição dos dados combinados em ALV
+  DATA: lo_alv TYPE REF TO cl_salv_table.
+
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = lo_alv
+        CHANGING  t_table      = it_resultado ).
+
+      lo_alv->display( ).
+
+    CATCH cx_salv_msg INTO DATA(lx_msg).
+      MESSAGE lx_msg->get_text( ) TYPE 'E'.
+  ENDTRY.
